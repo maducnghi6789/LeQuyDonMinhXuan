@@ -132,19 +132,29 @@ def account_manager_ui(target_role, specific_class=None):
             with st.form(f"form_{sel_u}"):
                 c1, c2 = st.columns(2)
                 f_name = c1.text_input("Họ và Tên", value=u_data['fullname'])
-                f_pass = c2.text_input("Mật khẩu", value=u_data['password'])
+                
+                # --- TÍNH NĂNG ĐỔI MẬT KHẨU ---
+                f_pass = c2.text_input("🔑 Mật khẩu (Sửa để đổi MK)", value=u_data['password'])
+                
                 f_cls = c1.text_input("Lớp", value=u_data['class_name'] if u_data['class_name'] else "")
                 f_sch = c2.text_input("Trường", value=u_data.get('school', '') if pd.notna(u_data.get('school')) else "")
                 f_man = st.text_input("Quyền quản lý", value=u_data.get('managed_classes', '') if pd.notna(u_data.get('managed_classes')) else "") if target_role == 'sub_admin' else ""
                 
-                b_up, b_del = st.columns(2)
+                # --- BỘ NÚT ĐIỀU KHIỂN ---
+                b_up, b_reset, b_del = st.columns(3)
+                
                 if b_up.form_submit_button("💾 CẬP NHẬT"):
                     if target_role == 'sub_admin':
                         conn.execute("UPDATE users SET fullname=?, password=?, class_name=?, school=?, managed_classes=? WHERE username=?", (f_name, f_pass, f_cls, f_sch, f_man, sel_u))
                     else:
                         conn.execute("UPDATE users SET fullname=?, password=?, class_name=?, school=? WHERE username=?", (f_name, f_pass, f_cls, f_sch, sel_u))
                     conn.commit(); st.success("✅ Đã cập nhật!"); time.sleep(0.5); st.rerun()
-                if b_del.form_submit_button("🗑️ XÓA"):
+                
+                if b_reset.form_submit_button("🔄 RESET MK VỀ 123@"):
+                    conn.execute("UPDATE users SET password=? WHERE username=?", ('123@', sel_u))
+                    conn.commit(); st.success(f"✅ Đã reset mật khẩu của {sel_u} về 123@"); time.sleep(1); st.rerun()
+
+                if b_del.form_submit_button("🗑️ XÓA TÀI KHOẢN"):
                     log_deletion(st.session_state.current_user, "Tài khoản", sel_u, "Xóa thủ công")
                     conn.execute("DELETE FROM users WHERE username=?", (sel_u,))
                     conn.execute("DELETE FROM mandatory_results WHERE username=?", (sel_u,))
@@ -155,6 +165,7 @@ def account_manager_ui(target_role, specific_class=None):
 
 def import_student_module():
     st.markdown("### 📥 Nhập dữ liệu & Tạo tài khoản Học sinh")
+    st.info("💡 **Ghi chú:** Toàn bộ tài khoản học sinh tạo mới (qua Excel hoặc thủ công) sẽ có mật khẩu mặc định là **`123@`**.")
     t1, t2 = st.tabs(["📁 Nạp File Excel", "✍️ Nhập thủ công"])
     with t1:
         df_sample = pd.DataFrame(columns=["Họ và tên", "Ngày sinh", "Lớp", "Tên trường"])
@@ -189,7 +200,8 @@ def import_student_module():
                         uname = gen_smart_username(name, existing_usernames)
                         existing_usernames.add(uname)
                         try:
-                            conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)", (uname, uname, 'student', name, dob, cls, sch))
+                            # TẠO TÀI KHOẢN VỚI MẬT KHẨU MẶC ĐỊNH LÀ 123@
+                            conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)", (uname, '123@', 'student', name, dob, cls, sch))
                             s += 1
                         except Exception as e:
                             f += 1
@@ -198,7 +210,7 @@ def import_student_module():
                         f += 1
                         error_details.append(f"- **Dòng {row_idx}:** Thiếu Họ tên/Lớp")
                 conn.commit(); conn.close()
-                st.success(f"✅ Thành công: {s} | ❌ Lỗi: {f}")
+                st.success(f"✅ Thành công: {s} tài khoản được tạo (Mật khẩu mặc định: 123@) | ❌ Lỗi: {f}")
                 if f > 0:
                     with st.expander("Chi tiết lỗi"):
                         for err in error_details: st.markdown(err)
@@ -211,8 +223,9 @@ def import_student_module():
                 existing = set([r[0] for r in conn.execute("SELECT username FROM users").fetchall()])
                 u = gen_smart_username(n, existing)
                 try:
-                    conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)", (u, u, 'student', n, d, c, s))
-                    conn.commit(); st.success(f"Đã tạo: {u}")
+                    # TẠO TÀI KHOẢN VỚI MẬT KHẨU MẶC ĐỊNH LÀ 123@
+                    conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)", (u, '123@', 'student', n, d, c, s))
+                    conn.commit(); st.success(f"Đã tạo: {u} (Mật khẩu: 123@)")
                 except: st.error("Lỗi!")
                 conn.close()
 
