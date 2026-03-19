@@ -2,8 +2,7 @@ streamlit
 pandas
 matplotlib
 numpy
-google-generativeai
 openpyxl
-PyMuPDF
 Pillow
+google-generativeai
 PyMuPDF
