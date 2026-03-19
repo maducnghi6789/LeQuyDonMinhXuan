@@ -30,24 +30,17 @@ def remove_accents(input_str):
     return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).replace(" ", "").lower()
 
 def gen_smart_username(fullname):
-    """
-    Quy tắc linh hoạt mới:
-    1. Cơ bản: lqd_tenkhongdau
-    2. Nếu trùng -> Tự động thêm số 1, 2, 3... (Bỏ qua ngày sinh)
-    """
     base_name = remove_accents(fullname)
     base_user = f"lqd_{base_name}"
     
     conn = sqlite3.connect('exam_db.sqlite')
     c = conn.cursor()
     
-    # Kiểm tra xem tài khoản gốc đã có chưa
     c.execute("SELECT COUNT(*) FROM users WHERE username=?", (base_user,))
     if c.fetchone()[0] == 0:
         conn.close()
         return base_user
         
-    # Nếu đã trùng, chạy vòng lặp cấp số thứ tự
     counter = 1
     while True:
         new_user = f"{base_user}{counter}"
@@ -150,7 +143,6 @@ def account_manager_ui(target_role, specific_class=None):
         st.info("Chưa có dữ liệu.")
     conn.close()
 
-# --- MODULE TẠO TÀI KHOẢN & NHẬP DỮ LIỆU ĐÃ NÂNG CẤP THÔNG MINH ---
 def import_student_module():
     st.markdown("### 📥 Nhập dữ liệu & Tạo tài khoản Học sinh")
     t1, t2 = st.tabs(["📁 Nạp File Excel", "✍️ Nhập thủ công"])
@@ -165,23 +157,16 @@ def import_student_module():
         if up and st.button("🚀 Nạp dữ liệu"):
             df = pd.read_excel(up)
             
-            # --- ĐỘNG CƠ NHẬN DIỆN CỘT THÔNG MINH (Bất chấp khoảng trắng, in hoa, in thường) ---
             col_mapping = {}
             for col in df.columns:
                 norm_col = remove_accents(str(col)).replace(" ", "").lower()
-                if "hovaten" in norm_col or "hoten" in norm_col:
-                    col_mapping[col] = "Họ và tên"
-                elif "lop" in norm_col:
-                    col_mapping[col] = "Lớp"
-                elif "ngaysinh" in norm_col:
-                    col_mapping[col] = "Ngày sinh"
-                elif "truong" in norm_col:
-                    col_mapping[col] = "Tên trường"
+                if "hovaten" in norm_col or "hoten" in norm_col: col_mapping[col] = "Họ và tên"
+                elif "lop" in norm_col: col_mapping[col] = "Lớp"
+                elif "ngaysinh" in norm_col: col_mapping[col] = "Ngày sinh"
+                elif "truong" in norm_col: col_mapping[col] = "Tên trường"
             
-            # Đổi tên cột về chuẩn để code bên dưới luôn chạy đúng
             df = df.rename(columns=col_mapping)
             
-            # Kiểm tra xem có đủ 2 cột cốt lõi không
             if "Họ và tên" not in df.columns or "Lớp" not in df.columns:
                 st.error("❌ File Excel thiếu cột 'Họ và tên' hoặc 'Lớp'. Vui lòng kiểm tra lại file!")
             else:
@@ -245,7 +230,7 @@ def import_student_module():
                             st.error("Lỗi: Tài khoản này đã tồn tại!")
                         conn.close()
 
-# --- MODULE XÓA LỚP HỌC ĐỒNG BỘ (CHỈ DÀNH CHO ADMIN LÕI) ---
+# --- MODULE XÓA LỚP HỌC ĐỒNG BỘ NÂNG CAO (CHỈ DÀNH CHO ADMIN LÕI) ---
 def delete_class_module(all_classes):
     st.markdown("### 🚨 Dọn dẹp & Xóa lớp học")
     if not all_classes:
@@ -254,7 +239,7 @@ def delete_class_module(all_classes):
 
     selected_del_class = st.selectbox("📌 Chọn lớp học muốn xóa vĩnh viễn:", ["-- Chọn lớp --"] + all_classes)
     if selected_del_class != "-- Chọn lớp --":
-        st.warning(f"CẢNH BÁO: Hành động này sẽ xóa vĩnh viễn toàn bộ học sinh và kết quả thi của lớp {selected_del_class}.")
+        st.warning(f"CẢNH BÁO: Hành động này sẽ xóa vĩnh viễn toàn bộ học sinh, kết quả thi và gỡ quyền quản lý lớp {selected_del_class} của tất cả Admin Thành viên.")
         reason = st.text_input("Lý do xóa lớp (Bắt buộc):")
         confirm = st.checkbox(f"Tôi xác nhận xóa sạch dữ liệu của lớp {selected_del_class}")
         
@@ -265,14 +250,29 @@ def delete_class_module(all_classes):
                 st.error("Bạn phải tích vào ô xác nhận!")
             else:
                 conn = sqlite3.connect('exam_db.sqlite')
+                
+                # 1. Xóa kết quả thi
                 stu_usernames = [r[0] for r in conn.execute("SELECT username FROM users WHERE class_name=? AND role='student'", (selected_del_class,)).fetchall()]
-                log_deletion(st.session_state.current_user, "Lớp học", selected_del_class, reason)
                 for u in stu_usernames:
                     conn.execute("DELETE FROM mandatory_results WHERE username=?", (u,))
+                
+                # 2. Xóa tài khoản học sinh
                 conn.execute("DELETE FROM users WHERE class_name=? AND role='student'", (selected_del_class,))
+                
+                # 3. ĐỒNG BỘ: Gỡ lớp này khỏi tài khoản Admin Thành viên
+                sub_admins = conn.execute("SELECT username, managed_classes FROM users WHERE role='sub_admin' AND managed_classes IS NOT NULL").fetchall()
+                for sa_u, sa_classes in sub_admins:
+                    if sa_classes:
+                        class_list = [c.strip() for c in sa_classes.split(',') if c.strip()]
+                        if selected_del_class in class_list:
+                            class_list.remove(selected_del_class) # Xóa tên lớp khỏi danh sách
+                            new_managed = ", ".join(class_list)
+                            conn.execute("UPDATE users SET managed_classes=? WHERE username=?", (new_managed, sa_u))
+                
+                log_deletion(st.session_state.current_user, "Lớp học", selected_del_class, reason)
                 conn.commit()
                 conn.close()
-                st.success(f"✅ Đã xóa thành công lớp {selected_del_class} và dọn dẹp dữ liệu đồng bộ!")
+                st.success(f"✅ Đã xóa thành công lớp {selected_del_class} và dọn dẹp dữ liệu đồng bộ trên toàn hệ thống!")
                 time.sleep(1)
                 st.rerun()
 
@@ -380,6 +380,13 @@ def main():
 
         elif choice == "👥 Quản lý khu vực":
             st.header("👥 Quản lý khu vực (Admin Thành viên)")
+            
+            # CẬP NHẬT ĐỒNG BỘ: Cần lấy lại quyền quản lý mới nhất từ DB vì Admin Lõi có thể vừa gỡ lớp
+            conn = sqlite3.connect('exam_db.sqlite')
+            current_managed = conn.execute("SELECT managed_classes FROM users WHERE username=?", (st.session_state.current_user,)).fetchone()[0]
+            conn.close()
+            st.session_state.managed = current_managed # Cập nhật Session
+            
             my_classes = [x.strip() for x in st.session_state.managed.split(',')] if st.session_state.managed else []
             t1, t2 = st.tabs(["🎓 Danh sách học sinh", "📥 Nhập dữ liệu HS"])
             with t1: 
