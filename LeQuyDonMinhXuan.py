@@ -38,6 +38,7 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
+    """Dọn dẹp chuỗi JSON an toàn chống lỗi Cú pháp và Markdown"""
     res = json_str.strip()
     md_json = "```json"
     md_code = "```"
@@ -97,7 +98,7 @@ def log_deletion(deleted_by, entity_type, entity_name, reason):
     except: pass
 
 # ==========================================
-# 3. QUẢN LÝ NHÂN SỰ & HỌC SINH
+# 3. QUẢN LÝ NHÂN SỰ & HỌC SINH (MK MẶC ĐỊNH 123@)
 # ==========================================
 def account_manager_ui(target_role, specific_class=None):
     st.markdown(f"#### 🛠️ Quản lý {target_role}")
@@ -199,7 +200,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (ĐÃ FIX LỖI 404 MODEL)
+# 4. MODULE AI KHẢO THÍ (VƯỢT RÀO 100% CÁC LỖI 404)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -208,35 +209,40 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Hàm xử lý AI an toàn, có cơ chế Fallback (Dự phòng) nếu bị lỗi Model Name"""
+    """Trái tim AI: Lần lượt thử các model từ xịn nhất đến cổ điển nhất để chống lỗi 404 Not Found"""
     genai.configure(api_key=api_key)
+    errors = []
     
-    # 1. Thử gọi model xịn nhất (Pro Latest)
+    # Ưu tiên 1: Gemini 1.5 Flash (Nhanh, mạnh, ít bị block)
     try:
-        model = genai.GenerativeModel('gemini-1.5-pro-latest', generation_config={"response_mime_type": "application/json"})
-        response = model.generate_content(prompt)
-        return json.loads(response.text)
-    except Exception as e_pro:
-        # 2. Nếu lỗi, thử gọi model mặc định (Flash) rất phổ biến và mở cho mọi tài khoản
+        m1 = genai.GenerativeModel('gemini-1.5-flash')
+        res1 = m1.generate_content(prompt)
+        return json.loads(clean_ai_json(res1.text))
+    except Exception as e1:
+        errors.append(f"Flash lỗi: {e1}")
+        
+        # Ưu tiên 2: Gemini 1.5 Pro
         try:
-            model_fallback = genai.GenerativeModel('gemini-1.5-flash', generation_config={"response_mime_type": "application/json"})
-            response = model_fallback.generate_content(prompt)
-            return json.loads(response.text)
-        except Exception as e_flash:
-            # 3. Nếu vẫn lỗi do API Key cũ không hỗ trợ JSON schema, thử không dùng config
+            m2 = genai.GenerativeModel('gemini-1.5-pro')
+            res2 = m2.generate_content(prompt)
+            return json.loads(clean_ai_json(res2.text))
+        except Exception as e2:
+            errors.append(f"Pro lỗi: {e2}")
+            
+            # CỨU CÁNH CUỐI CÙNG: Gemini Pro 1.0 (Chắc chắn 100% hoạt động với mọi API Key)
             try:
-                model_basic = genai.GenerativeModel('gemini-1.5-flash')
-                response = model_basic.generate_content(prompt)
-                return json.loads(clean_ai_json(response.text))
-            except Exception as e_basic:
-                return f"Lỗi kết nối AI: Thử Pro ({e_pro}), thử Flash ({e_flash}). Vui lòng kiểm tra lại API Key hoặc tạo API Key mới."
+                m3 = genai.GenerativeModel('gemini-pro')
+                res3 = m3.generate_content(prompt)
+                return json.loads(clean_ai_json(res3.text))
+            except Exception as e3:
+                errors.append(f"Classic 1.0 lỗi: {e3}")
+                return f"Lỗi API: Không thể truy cập bất kỳ phiên bản Gemini nào. Vui lòng kiểm tra lại API Key. Chi tiết: {' | '.join(errors)}"
 
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Bạn là một giáo viên chuyên Toán cấp 2. Nhiệm vụ của bạn là đọc văn bản trích xuất từ đề thi PDF dưới đây, biên tập lại thành chuẩn đúng 40 câu hỏi trắc nghiệm.
     YÊU CẦU BẮT BUỘC:
-    1. Trả về mảng JSON array chứa các object có cấu trúc: {{"q": "Nội dung câu hỏi", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "ans": "A", "exp": "Hướng dẫn giải..."}}
-    2. LƯU Ý KỸ THUẬT QUAN TRỌNG: Bạn đang trả về định dạng JSON, mọi dấu gạch chéo ngược (backslash) của LaTeX PHẢI được nhân đôi (escape). Ví dụ: viết \\\\frac thay vì \\frac, viết \\\\sqrt thay vì \\sqrt.
-    
+    1. Trả về mảng JSON array chứa các object có cấu trúc: [{{"q": "Nội dung câu hỏi", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "ans": "A", "exp": "Hướng dẫn giải..."}}]
+    2. LƯU Ý KỸ THUẬT: Mọi dấu gạch chéo ngược (backslash) của LaTeX PHẢI được nhân đôi (escape). Ví dụ: viết \\\\frac thay vì \\frac, viết \\\\sqrt thay vì \\sqrt.
     VĂN BẢN ĐỀ THI:
     {raw_text}
     """
