@@ -69,8 +69,17 @@ def init_db():
     conn.commit(); conn.close()
 
 def log_deletion(deleted_by, entity_type, entity_name, reason):
+    """Sửa lỗi OperationalError bằng cách ép tạo bảng tại chỗ"""
     conn = sqlite3.connect('exam_db.sqlite')
-    conn.execute('''CREATE TABLE IF NOT EXISTS deletion_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, deleted_by TEXT, entity_type TEXT, entity_name TEXT, reason TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+    # Ép tạo bảng ngay tại đây để đảm bảo tuyệt đối không bị lỗi thiếu bảng
+    conn.execute('''CREATE TABLE IF NOT EXISTS deletion_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        deleted_by TEXT, 
+        entity_type TEXT, 
+        entity_name TEXT, 
+        reason TEXT, 
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+    
     vn_time = datetime.now(VN_TZ).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute("INSERT INTO deletion_logs (deleted_by, entity_type, entity_name, reason, timestamp) VALUES (?, ?, ?, ?, ?)", 
                  (deleted_by, entity_type, entity_name, reason, vn_time))
@@ -124,7 +133,6 @@ def account_manager_ui(target_role, specific_class=None):
                     conn.commit(); st.warning(f"💥 Đã xóa {sel_u}"); time.sleep(0.5); st.rerun()
     conn.close()
 
-# --- MODULE NHẬP DỮ LIỆU ĐÃ FIX LỖI IMPORT ---
 def import_student_module():
     st.markdown("### 📥 Nhập dữ liệu & Tạo tài khoản Học sinh")
     t1, t2 = st.tabs(["📁 Nạp File Excel", "✍️ Nhập thủ công"])
@@ -138,8 +146,6 @@ def import_student_module():
         up = st.file_uploader("Nạp Excel", type="xlsx")
         if up and st.button("🚀 Nạp dữ liệu"):
             df = pd.read_excel(up)
-            
-            # Tự động map tên cột thông minh (Bất chấp dấu cách thừa)
             col_mapping = {}
             for col in df.columns:
                 norm_col = remove_accents(str(col)).replace(" ", "").lower()
@@ -153,7 +159,6 @@ def import_student_module():
                 st.error("❌ File Excel thiếu cột 'Họ và tên' hoặc 'Lớp'.")
             else:
                 conn = sqlite3.connect('exam_db.sqlite')
-                # Tải bộ nhớ tạm Username để check trùng ngay lập tức
                 existing_usernames = set([r[0] for r in conn.execute("SELECT username FROM users").fetchall()])
                 s, f = 0, 0
                 error_details = []
@@ -161,7 +166,6 @@ def import_student_module():
                     row_idx = idx + 2
                     name, dob, cls, sch = str(r.get('Họ và tên', '')).strip(), str(r.get('Ngày sinh', '')).strip(), str(r.get('Lớp', '')).strip(), str(r.get('Tên trường', '')).strip()
                     if name and name.lower() != 'nan' and cls and cls.lower() != 'nan':
-                        # Tạo username và nạp luôn vào bộ nhớ tạm
                         uname = gen_smart_username(name, existing_usernames)
                         existing_usernames.add(uname)
                         try:
