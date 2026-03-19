@@ -59,71 +59,80 @@ def get_api_key():
     return res[0] if res else ""
 
 # ==========================================
-# 3. MODULE NHẬP DỮ LIỆU HỌC SINH (DÀNH CHO ADMIN THÀNH VIÊN)
+# 3. MODULE NHẬP DỮ LIỆU & QUẢN LÝ TÁC VỤ (VIỆT HÓA)
 # ==========================================
-def input_student_ui(current_managed_classes):
-    st.markdown("### 📥 Quản lý nhập liệu học sinh")
-    t1, t2 = st.tabs(["📁 Nạp File Excel", "✍️ Nhập thủ công"])
+def student_management_module(managed_filter=None):
+    st.markdown("### 📥 Nhập dữ liệu & Quản lý Học sinh")
+    t1, t2, t3 = st.tabs(["📁 Nạp File Excel", "✍️ Nhập thủ công", "🛠️ Chỉnh sửa/Xóa"])
     
     with t1:
-        # Tạo file Excel mẫu
+        # Tạo file mẫu
         df_sample = pd.DataFrame(columns=["Họ và tên", "Ngày sinh", "Lớp", "Tên trường"])
         df_sample.loc[0] = ["Nguyễn Văn An", "15/08/2010", "9A1", "THCS Lê Quý Đôn"]
         out = BytesIO()
         with pd.ExcelWriter(out, engine='openpyxl') as w: df_sample.to_excel(w, index=False)
-        st.download_button("⬇️ Tải File Excel Mẫu", out.getvalue(), "Mau_Hoc_Sinh.xlsx")
+        st.download_button("⬇️ Tải File Mẫu", out.getvalue(), "Mau_Hoc_Sinh.xlsx")
         
-        up = st.file_uploader("Nạp danh sách học sinh (Excel)", type="xlsx")
-        if up and st.button("🚀 Bắt đầu nạp dữ liệu"):
+        up = st.file_uploader("Nạp Excel học sinh", type="xlsx")
+        if up and st.button("🚀 Bắt đầu nạp"):
             df = pd.read_excel(up)
             conn = sqlite3.connect('exam_db.sqlite')
             s, f = 0, 0
             for _, r in df.iterrows():
                 name, dob, cls, sch = str(r['Họ và tên']), str(r['Ngày sinh']), str(r['Lớp']), str(r['Tên trường'])
                 uname = remove_accents(name)
-                
-                # Logic kiểm tra trùng tên trong lớp
                 if check_username_exists(uname, cls):
-                    if dob == 'nan' or not dob:
-                        f += 1; continue # Bỏ qua nếu trùng mà không có ngày sinh
-                    suffix = "".join(filter(str.isdigit, dob))
-                    uname = f"{uname}{suffix}"
-                
+                    if not dob or dob == 'nan': f += 1; continue
+                    uname = f"{uname}{''.join(filter(str.isdigit, dob))}"
                 try:
                     conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)",
                                  (uname, uname, 'student', name, dob, cls, sch))
                     s += 1
                 except: f += 1
-            conn.commit(); conn.close()
-            st.success(f"✅ Đã nạp thành công: {s} học sinh. Thất bại: {f}.")
+            conn.commit(); conn.close(); st.success(f"✅ Đã nạp: {s} | ❌ Lỗi: {f}")
 
     with t2:
-        with st.form("manual_student"):
+        with st.form("manual_st"):
             c1, c2 = st.columns(2)
-            f_name = c1.text_input("Họ và Tên (Bắt buộc)")
-            f_class = c2.text_input("Lớp (Bắt buộc)")
-            f_dob = c1.text_input("Ngày sinh (Chỉ bắt buộc nếu trùng tên)")
-            f_school = c2.text_input("Tên trường")
-            if st.form_submit_button("✅ Khởi tạo học sinh"):
-                uname = remove_accents(f_name)
-                if check_username_exists(uname, f_class):
-                    if not f_dob:
-                        st.error("Phát hiện trùng tên trong lớp! Vui lòng nhập Ngày sinh.")
-                    else:
-                        suffix = "".join(filter(str.isdigit, f_dob))
-                        uname = f"{uname}{suffix}"
-                
+            f_n, f_c = c1.text_input("Họ và Tên"), c2.text_input("Lớp")
+            f_d, f_s = c1.text_input("Ngày sinh"), c2.text_input("Tên trường")
+            if st.form_submit_button("✅ Khởi tạo"):
+                uname = remove_accents(f_n)
+                if check_username_exists(uname, f_c):
+                    if not f_d: st.error("Trùng tên! Nhập ngày sinh.")
+                    else: uname = f"{uname}{''.join(filter(str.isdigit, f_d))}"
                 if uname:
                     conn = sqlite3.connect('exam_db.sqlite')
-                    try:
-                        conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)",
-                                     (uname, uname, 'student', f_name, f_dob, f_class, f_school))
-                        conn.commit(); st.success(f"Tạo thành công tài khoản: {uname}")
-                    except: st.error("Lỗi: Tài khoản đã tồn tại.")
-                    conn.close()
+                    conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)",
+                                 (uname, uname, 'student', f_n, f_d, f_c, f_s))
+                    conn.commit(); conn.close(); st.success(f"Tạo: {uname}")
+
+    with t3:
+        st.subheader("🛠️ Tác vụ Sửa/Xóa học sinh")
+        conn = sqlite3.connect('exam_db.sqlite')
+        query = "SELECT * FROM users WHERE role='student'"
+        if managed_filter and st.session_state.role != 'core_admin':
+            cls_list = "','".join([x.strip() for x in managed_filter.split(',')])
+            query += f" AND class_name IN ('{cls_list}')"
+        df_view = pd.read_sql_query(query, conn)
+        st.dataframe(df_view[['username', 'fullname', 'password', 'class_name']], use_container_width=True)
+        
+        sel_u = st.selectbox("Chọn học sinh xử lý:", ["-- Chọn --"] + df_view['username'].tolist())
+        if sel_u != "-- Chọn --":
+            u_data = df_view[df_view['username'] == sel_u].iloc[0]
+            with st.form(f"edit_{sel_u}"):
+                new_pw = st.text_input("Đổi mật khẩu", value=u_data['password'])
+                btn_u, btn_d = st.columns(2)
+                if btn_u.form_submit_button("💾 Cập nhật"):
+                    conn.execute("UPDATE users SET password=? WHERE username=?", (new_pw, sel_u))
+                    conn.commit(); st.rerun()
+                if btn_d.form_submit_button("🗑️ Xóa tài khoản"):
+                    conn.execute("DELETE FROM users WHERE username=?", (sel_u,))
+                    conn.commit(); st.rerun()
+        conn.close()
 
 # ==========================================
-# 4. GIAO DIỆN PHÂN QUYỀN 3 TẦNG (V100)
+# 4. GIAO DIỆN PHÂN QUYỀN V100 (ARCHITECT)
 # ==========================================
 def main():
     st.set_page_config(page_title="LMS Lê Quý Đôn V100", layout="wide")
@@ -143,7 +152,7 @@ def main():
                     if res:
                         st.session_state.current_user, st.session_state.role, st.session_state.fullname, st.session_state.managed = u, res[0], res[1], res[2]
                         st.rerun()
-                    else: st.error("❌ Sai thông tin đăng nhập!")
+                    else: st.error("❌ Sai thông tin!")
     else:
         role = st.session_state.role
         with st.sidebar:
@@ -165,24 +174,30 @@ def main():
             elif role == "sub_admin": menu = ["👥 Quản lý khu vực", "🤖 AI Sinh đề"] + menu
             
             choice = st.radio("Menu chính", menu)
-            if st.button("🚪 Đăng xuất", use_container_width=True): st.session_state.clear(); st.rerun()
+            if st.button("🚪 Thoát", use_container_width=True): st.session_state.clear(); st.rerun()
 
-        # --- ĐIỀU HƯỚNG TÁC VỤ ---
         if choice == "🛡️ Quản trị tối cao":
             st.header("🛡️ Quản trị tối cao (Admin Lõi)")
-            # CHỈ CHO PHÉP TẠO ADMIN THÀNH VIÊN VÀ QUẢN LÝ NHÂN SỰ CẤP CAO
-            st.subheader("Tạo Admin Thành viên mới")
-            with st.form("add_sa"):
-                u_sa, p_sa, n_sa, m_sa = st.text_input("Username"), st.text_input("Mật khẩu"), st.text_input("Họ tên"), st.text_input("Lớp quản lý")
-                if st.form_submit_button("✅ Cấp quyền Admin"):
+            st.subheader("Quản lý Admin Thành viên")
+            with st.form("add_sub"):
+                c1, c2 = st.columns(2)
+                u_s, p_s = c1.text_input("Username Admin TV"), c2.text_input("Mật khẩu")
+                n_s, m_s = c1.text_input("Họ tên"), c2.text_input("Vùng/Lớp quản lý")
+                if st.form_submit_button("✅ Khởi tạo Admin Thành viên"):
                     conn = sqlite3.connect('exam_db.sqlite')
-                    conn.execute("INSERT INTO users (username, password, role, fullname, managed_classes) VALUES (?,?,'sub_admin',?,?)", (u_sa, p_sa, n_sa, m_sa))
+                    conn.execute("INSERT INTO users (username, password, role, fullname, managed_classes) VALUES (?,?,'sub_admin',?,?)", (u_s, p_s, n_s, m_s))
                     conn.commit(); conn.close(); st.rerun()
+            
+            # DANH SÁCH VÀ SỬA (KHÔNG XÓA THEO YÊU CẦU)
+            conn = sqlite3.connect('exam_db.sqlite')
+            df_sub = pd.read_sql_query("SELECT username, fullname, password, managed_classes FROM users WHERE role='sub_admin'", conn)
+            st.dataframe(df_sub, use_container_width=True)
+            st.warning("⚠️ Chế độ bảo vệ: Admin Lõi không được phép xóa Admin thành viên để bảo toàn hệ thống.")
+            conn.close()
 
         elif choice == "👥 Quản lý khu vực":
-            st.header("👥 Quản trị khu vực (Admin Thành viên)")
-            input_student_ui(st.session_state.managed)
-            # Module Sửa/Xóa học sinh dành cho Admin Thành viên...
+            st.header("👥 Quản lý lớp học (Admin Thành viên)")
+            student_management_module(st.session_state.managed)
 
 if __name__ == "__main__":
     main()
