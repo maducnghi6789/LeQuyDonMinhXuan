@@ -50,21 +50,30 @@ def gen_smart_username(fullname, existing_usernames):
 def init_db():
     conn = sqlite3.connect('exam_db.sqlite')
     c = conn.cursor()
-    # 1. Khởi tạo bảng cơ sở
-    c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY)''')
     
-    # 2. Cập nhật cấu trúc bảng từng bước an toàn
-    columns = [
+    # 1. Khởi tạo bảng với đầy đủ cấu trúc chuẩn ngay từ đầu
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        username TEXT PRIMARY KEY, password TEXT, role TEXT, 
+        fullname TEXT, dob TEXT, class_name TEXT, 
+        school TEXT, managed_classes TEXT)''')
+    
+    # 2. CỨU HỘ DATABASE: Kiểm tra nếu DB hiện tại bị lỗi thiếu cột (do bản code trước gây ra)
+    c.execute("PRAGMA table_info(users)")
+    existing_columns = [row[1] for row in c.fetchall()]
+    
+    columns_to_ensure = [
         ("password", "TEXT"), ("role", "TEXT"), ("fullname", "TEXT"),
         ("dob", "TEXT"), ("class_name", "TEXT"), ("school", "TEXT"),
         ("managed_classes", "TEXT")
     ]
-    for col_name, col_type in columns:
-        try:
-            c.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
-        except:
-            pass # Bỏ qua nếu cột đã tồn tại
-            
+    
+    for col_name, col_type in columns_to_ensure:
+        if col_name not in existing_columns:
+            try:
+                c.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+            except Exception:
+                pass
+                
     # 3. Khởi tạo các bảng phụ trợ
     c.execute('''CREATE TABLE IF NOT EXISTS system_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS mandatory_exams (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, questions_json TEXT, start_time TEXT, end_time TEXT, target_class TEXT, file_data TEXT, file_type TEXT, answer_key TEXT)''')
@@ -75,33 +84,23 @@ def init_db():
     conn.commit(); conn.close()
 
 def log_deletion(deleted_by, entity_type, entity_name, reason):
-    """FAIL-SAFE: Xử lý triệt để lỗi OperationalError khi ghi Log"""
     try:
         conn = sqlite3.connect('exam_db.sqlite')
         vn_time = datetime.now(VN_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        
         try:
-            # Thử ghi vào bảng hiện tại
             conn.execute("INSERT INTO deletion_logs (deleted_by, entity_type, entity_name, reason, timestamp) VALUES (?, ?, ?, ?, ?)", 
                          (deleted_by, entity_type, entity_name, reason, vn_time))
         except sqlite3.OperationalError:
-            # Nếu cấu trúc bảng sai/lệch cột, đập bỏ và xây lại chuẩn xác
+            # Nếu bảng lỗi cấu trúc, tự động đập đi xây lại
             conn.execute("DROP TABLE IF EXISTS deletion_logs")
             conn.execute('''CREATE TABLE deletion_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                deleted_by TEXT, 
-                entity_type TEXT, 
-                entity_name TEXT, 
-                reason TEXT, 
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-            # Ghi lại
+                deleted_by TEXT, entity_type TEXT, entity_name TEXT, 
+                reason TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
             conn.execute("INSERT INTO deletion_logs (deleted_by, entity_type, entity_name, reason, timestamp) VALUES (?, ?, ?, ?, ?)", 
                          (deleted_by, entity_type, entity_name, reason, vn_time))
-        
         conn.commit(); conn.close()
     except Exception:
-        # Nếu có bất kỳ lỗi DB khóa nào khác, tự động bỏ qua việc ghi log
-        # Đảm bảo tác vụ Xóa tài khoản/Xóa lớp của User vẫn mượt mà 100%
         pass
 
 def get_api_key():
@@ -111,7 +110,7 @@ def get_api_key():
     return res[0] if res else ""
 
 # ==========================================
-# 3. MODULE TÁC VỤ (GIỮ NGUYÊN BẢN V100 TỐI ƯU)
+# 3. MODULE TÁC VỤ (QUẢN LÝ, NHẬP LIỆU, XÓA LỚP)
 # ==========================================
 def account_manager_ui(target_role, specific_class=None):
     st.markdown(f"#### 🛠️ Quản lý danh sách {target_role}")
@@ -150,6 +149,8 @@ def account_manager_ui(target_role, specific_class=None):
                     conn.execute("DELETE FROM users WHERE username=?", (sel_u,))
                     conn.execute("DELETE FROM mandatory_results WHERE username=?", (sel_u,))
                     conn.commit(); st.warning(f"💥 Đã xóa {sel_u}"); time.sleep(0.5); st.rerun()
+    else:
+        st.info("Chưa có dữ liệu.")
     conn.close()
 
 def import_student_module():
