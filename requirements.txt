@@ -1,7 +1,7 @@
 streamlit
-google-generativeai
+pandas
 matplotlib
 numpy
-pandas
+google-generativeai
 openpyxl
 PyPDF2
