@@ -38,7 +38,7 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
-    """Dọn dẹp chuỗi JSON an toàn chống lỗi Cú pháp và Markdown"""
+    """Dọn dẹp chuỗi JSON an toàn"""
     res = json_str.strip()
     md_json = "```json"
     md_code = "```"
@@ -200,7 +200,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (CẬP NHẬT GEMINI 2.5)
+# 4. MODULE AI KHẢO THÍ (ĐÃ SỬA PROMPT LATEX)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -209,56 +209,58 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Trái tim AI: Tự động dùng phiên bản 2.5 mới nhất của Google để khắc phục lỗi 404"""
+    """Trái tim AI: Tối ưu bắt lỗi Quota 429 và định dạng JSON"""
     genai.configure(api_key=api_key)
-    errors = []
-    
-    # Ưu tiên 1: Gemini 2.5 Flash (Bản tiêu chuẩn mới nhất, cực nhanh, thay thế cho 1.5)
     try:
-        m1 = genai.GenerativeModel('gemini-2.5-flash')
-        res1 = m1.generate_content(prompt)
-        return json.loads(clean_ai_json(res1.text))
-    except Exception as e1:
-        errors.append(f"2.5 Flash lỗi: {e1}")
-        
-        # Ưu tiên 2: Gemini 2.5 Pro (Bản xịn nhất cho tài khoản PRO)
-        try:
-            m2 = genai.GenerativeModel('gemini-2.5-pro')
-            res2 = m2.generate_content(prompt)
-            return json.loads(clean_ai_json(res2.text))
-        except Exception as e2:
-            errors.append(f"2.5 Pro lỗi: {e2}")
-            
-            # Ưu tiên 3: Gemini 2.0 Flash (Cứu cánh siêu ổn định)
-            try:
-                m3 = genai.GenerativeModel('gemini-2.0-flash')
-                res3 = m3.generate_content(prompt)
-                return json.loads(clean_ai_json(res3.text))
-            except Exception as e3:
-                errors.append(f"2.0 Flash lỗi: {e3}")
-                return f"Lỗi Máy chủ Google API: {' | '.join(errors)}"
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(prompt)
+        return json.loads(clean_ai_json(response.text))
+    except Exception as e:
+        error_msg = str(e)
+        if "429" in error_msg:
+            return "LỖI HẠN NGẠCH (Quota 429): Tài khoản đang bị quá tải yêu cầu. Vui lòng chờ 1 phút rồi bấm lại."
+        elif "JSON" in error_msg:
+            return "LỖI ĐỊNH DẠNG: AI trả về dữ liệu không đúng cấu trúc. Vui lòng bấm tạo lại đề."
+        else:
+            return f"Lỗi AI không xác định: {error_msg}"
 
 def parse_exam_with_ai(raw_text, api_key):
-    prompt = f"""Bạn là một giáo viên chuyên Toán cấp 2. Nhiệm vụ của bạn là đọc văn bản trích xuất từ đề thi PDF dưới đây, biên tập lại thành chuẩn đúng 40 câu hỏi trắc nghiệm.
+    # Prompt CẬP NHẬT: Kỷ luật thép về LaTeX và thêm BRIEF SOLUTION
+    prompt = f"""Bạn là một giáo viên chuyên Toán cấp 2 SOẠN ĐỀ THI TRẮC NGHIỆM ĐỒNG BỘ 100% TỪ PDF ĐỀ GỐC.
     YÊU CẦU BẮT BUỘC:
-    1. Trả về mảng JSON array chứa các object có cấu trúc: [{{"q": "Nội dung câu hỏi", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "ans": "A", "exp": "Hướng dẫn giải..."}}]
-    2. LƯU Ý KỸ THUẬT: Mọi dấu gạch chéo ngược (backslash) của LaTeX PHẢI được nhân đôi (escape). Ví dụ: viết \\\\frac thay vì \\frac, viết \\\\sqrt thay vì \\sqrt.
-    VĂN BẢN ĐỀ THI:
+    1. Trả về DUY NHẤT mảng JSON array chứa đúng 40 câu hỏi.
+    2. Cấu trúc mỗi object: {{"q": "Đề bài", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "ans": "A", "exp": "Brief solution (Hướng dẫn giải ngắn gọn)"}}
+    3. CÔNG THỨC TOÁN (LATEX) PHẢI ĐƯỢC BỌC CHÍNH XÁC:
+       - Inline: Dùng $ công thức $. (VD: $ \frac{1}{2} $)
+       - Block: Dùng $$ công thức $$.
+    4. Ký tự backslash PHẢI được escape (nhân đôi). (VD: viết \\\\frac thay vì \\frac).
+    5. Không được tự sáng tác đề mới, phải bám sát PDF gốc.
+
+    VĂN BẢN ĐỀ THI GỐC (PDF):
     {raw_text}
     """
     return safe_ai_generate(prompt, api_key)
 
 def generate_free_practice_ai(api_key):
+    # Prompt CẬP NHẬT: Kỷ luật thép về LaTeX và BRIEF SOLUTION
     prompt = """Bạn là chuyên gia bồi dưỡng học sinh giỏi Toán lớp 9. Hãy tự động sáng tác một đề kiểm tra trắc nghiệm gồm 40 câu hỏi mức độ Vận dụng và Vận dụng cao.
     YÊU CẦU ĐỀ BÀI:
     - Nội dung: Đại số, Hình học, Số học. Không lặp lại nội dung.
-    - YÊU CẦU JSON & LATEX BẮT BUỘC: Trả về mảng JSON: [{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn..."}]. 
-    - TRONG JSON NÀY, TẤT CẢ công thức Toán LaTeX PHẢI được escape dấu gạch chéo (ví dụ: \\\\frac{1}{2}, \\\\sqrt{x}). Bọc công thức trong dấu $ hoặc $$.
+    - YÊU CẦU JSON & LATEX BẮT BUỘC: Trả về mảng JSON array. Cấu trúc: [{"q": "Đề", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn giải ngắn gọn"}].
+    - CÔNG THỨC TOÁN PHẢI ĐƯỢC BỌC TRONG $ (inline) hoặc $$ (block). Escape backslash.
     """
     return safe_ai_generate(prompt, api_key)
 
 # ==========================================
-# 5. GIAO DIỆN HỌC SINH (LÀM BÀI THI)
+# 5. TIỆN ÍCH HIỂN THỊ CÔNG THỨC TOÁN (FIX VẤN ĐỀ 1)
+# ==========================================
+def render_exam_content(text):
+    """Render văn bản có thể chứa công thức Toán chuẩn LaTeX"""
+    # Streamlit đã hỗ trợ tự động nhận diện $...$ trong st.write()
+    st.write(text)
+
+# ==========================================
+# 6. GIAO DIỆN HỌC SINH (LÀM BÀI THI) - ĐÃ CÓ LIÊN KẾT GIẢI (FIX VẤN ĐỀ 2)
 # ==========================================
 def take_exam_ui(exam_data, exam_id, is_mandatory=True):
     st.markdown(f"### 📝 {exam_data.get('title', 'Luyện đề tự do')}")
@@ -297,7 +299,8 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True):
 
         with st.form(f"exam_form_{exam_id}"):
             for i, q in enumerate(questions):
-                st.markdown(f"**Câu {i+1}:** {q['q']}")
+                st.markdown(f"**Câu {i+1}:**")
+                render_exam_content(q['q']) # Dùng hàm render Toán
                 st.session_state.student_answers[i] = st.radio("Chọn đáp án:", q['options'], index=None, key=f"q_{i}")
                 st.divider()
             
@@ -322,13 +325,16 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True):
                 st.rerun()
                 
     else:
+        # --- GIAO DIỆN HỌC SINH SAU KHI NỘP BÀI / HẾT GIỜ ---
         st.success(f"🎉 HOÀN THÀNH! ĐIỂM CỦA BẠN: **{st.session_state.score} / 10**")
         st.markdown("### 🔍 XEM HƯỚNG DẪN GIẢI")
         for i, q in enumerate(questions):
             with st.expander(f"Câu {i+1} - Đáp án đúng: {q['ans']}"):
-                st.markdown(f"**Đề:** {q['q']}")
+                st.markdown(f"**Đề:**")
+                render_exam_content(q['q'])
                 st.markdown(f"*Bạn chọn:* {st.session_state.student_answers.get(i, 'Không chọn')}")
-                st.info(f"**Hướng dẫn (AI):**\n{q['exp']}")
+                # --- ĐÂY LÀ DÒNG CODE LIÊN KẾT GIẢI ---
+                st.info(f"**Hướng dẫn (AI):**\n{q['exp']}") 
         if st.button("⬅️ Trở về danh sách đề"):
             st.session_state.show_results = False
             st.session_state.current_exam_id = None
@@ -337,7 +343,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True):
             st.rerun()
 
 # ==========================================
-# 6. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH
+# 7. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH
 # ==========================================
 def main():
     st.set_page_config(page_title="LMS Lê Quý Đôn V200", layout="wide")
@@ -427,30 +433,63 @@ def main():
             with t2: import_student_module()
 
         elif choice == "📤 Giao đề thi thử":
+            # --- GIAO DIỆN ADMIN GIAO ĐỀ (FIX VẤN ĐỀ 2) ---
             st.header("📤 Giao đề thi thử (Bằng File PDF)")
-            st.info("💡 Tải file PDF chứa đề trắc nghiệm. AI sẽ tự động đọc, tạo hướng dẫn giải và ép chuẩn công thức Toán (LaTeX).")
             if not api_key: st.error("❌ Hệ thống chưa cấu hình Gemini API Key.")
             else:
                 target_classes = ["Tất cả các lớp"] + all_cl if role == "core_admin" else [x.strip() for x in st.session_state.managed.split(',')]
+                
+                # Biến session state để lưu đề thi tạm thời trước khi lưu
+                if 'temp_exam_data' not in st.session_state: st.session_state.temp_exam_data = None
+
                 with st.form("upload_pdf"):
                     e_title = st.text_input("Tên bài kiểm tra:")
                     e_class = st.selectbox("Giao bài cho lớp:", target_classes)
                     e_time = st.number_input("Thời gian (Phút):", min_value=15, value=90, step=5)
                     e_file = st.file_uploader("Tải Đề thi (PDF)", type="pdf")
+                    b_process = st.form_submit_button("🚀 BIÊN TẬP & XEM TRƯỚC (Preview)")
+
+                if b_process and e_title and e_file:
+                    with st.spinner("🤖 AI đang giải đề và biên tập PDF... (Có thể mất 1-2 phút)"):
+                        raw_txt = extract_text_from_pdf(e_file)
+                        exam_res = parse_exam_with_ai(raw_txt, api_key)
+                        if isinstance(exam_res, list):
+                            # Lưu vào session tạm thời
+                            st.session_state.temp_exam_data = {
+                                'title': e_title, 'class': e_class, 'time': e_time, 'questions': exam_res
+                            }
+                        else: st.error(f"❌ {exam_res}")
+
+                # --- PHẦN PREVIEW VÀ LƯU GIẢI (FIX VẤN ĐỀ 2) ---
+                if st.session_state.temp_exam_data:
+                    st.divider()
+                    st.subheader("🔍 XEM TRƯỚC ĐỀ THI & HƯỚNG DẪN GIẢI")
+                    st.info("💡 Thầy cô vui lòng rà soát lại câu hỏi và Hướng dẫn giải (Brief Solution) trước khi chính thức Giao đề.")
                     
-                    if st.form_submit_button("🚀 BIÊN TẬP & GIAO ĐỀ BẰNG AI"):
-                        if e_title and e_file:
-                            with st.spinner("🤖 AI đang giải đề và phân tích PDF... (Có thể mất 1-2 phút)"):
-                                raw_txt = extract_text_from_pdf(e_file)
-                                exam_res = parse_exam_with_ai(raw_txt, api_key)
-                                if isinstance(exam_res, list):
-                                    conn = sqlite3.connect('exam_db.sqlite')
-                                    conn.execute("INSERT INTO mandatory_exams (title, questions_json, time_limit, target_class, created_by) VALUES (?,?,?,?,?)",
-                                                 (e_title, json.dumps(exam_res), e_time, e_class, st.session_state.current_user))
-                                    conn.commit(); conn.close()
-                                    st.success(f"✅ Đã giao {len(exam_res)} câu hỏi cho lớp {e_class}!")
-                                else: st.error(f"❌ Cảnh báo từ AI: {exam_res}")
-                        else: st.warning("Vui lòng điền Tên bài và tải File!")
+                    data = st.session_state.temp_exam_data
+                    st.markdown(f"**Tên bài:** {data['title']} | **Lớp:** {data['class']} | **Thời gian:** {data['time']} phút")
+                    
+                    for i, q in enumerate(data['questions']):
+                        with st.expander(f"Câu {i+1} - Đáp án: {q['ans']}"):
+                            st.markdown("**Đề:**")
+                            render_exam_content(q['q'])
+                            st.markdown("**Các đáp án:**")
+                            for opt in q['options']: render_exam_content(opt)
+                            # --- ĐÂY LÀ PHẦN ADMIN NHÌN THẤY GIẢI ---
+                            st.success(f"**Hướng dẫn (Brief Solution):**\n{q['exp']}") 
+
+                    c1, c2 = st.columns(2)
+                    if c1.button("💾 CHÍNH THỨC LƯU VÀ GIAO ĐỀ", type="primary"):
+                        conn = sqlite3.connect('exam_db.sqlite')
+                        conn.execute("INSERT INTO mandatory_exams (title, questions_json, time_limit, target_class, created_by) VALUES (?,?,?,?,?)",
+                                     (data['title'], json.dumps(data['questions']), data['time'], data['class'], st.session_state.current_user))
+                        conn.commit(); conn.close()
+                        st.success(f"✅ Đã giao đề {data['title']} thành công!")
+                        st.session_state.temp_exam_data = None # Xóa tạm thời
+                        time.sleep(1); st.rerun()
+                    if c2.button("❌ HỦY BẢN NHÁP NÀY"):
+                        st.session_state.temp_exam_data = None
+                        st.rerun()
 
         elif choice == "📊 Thống kê":
             st.header("📊 Thống kê & Phân tích Đề thi")
