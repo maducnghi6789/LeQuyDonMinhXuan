@@ -22,7 +22,7 @@ ADMIN_CORE_PW = "GiámĐốc2026"
 VN_TZ = timezone(timedelta(hours=7))
 
 # ==========================================
-# 1. TIỆN ÍCH XỬ LÝ USERNAME (lqd_ + không dấu)
+# 1. TIỆN ÍCH XỬ LÝ USERNAME (GIẢI PHÁP THÔNG THOÁNG)
 # ==========================================
 def remove_accents(input_str):
     if not input_str: return ""
@@ -30,34 +30,44 @@ def remove_accents(input_str):
     return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).replace(" ", "").lower()
 
 def gen_smart_username(fullname, dob):
-    """Tạo username dạng lqd_tenkhongdau. Kiểm tra trùng trên toàn hệ thống."""
+    """
+    Quy tắc linh hoạt:
+    1. Base: lqd_tenkhongdau
+    2. Trùng -> Thêm Ngày sinh (nếu có)
+    3. Trống ngày sinh / Vẫn trùng -> Tự động thêm _1, _2...
+    """
     base_name = remove_accents(fullname)
     base_user = f"lqd_{base_name}"
     
     conn = sqlite3.connect('exam_db.sqlite')
-    # Username là khóa chính duy nhất toàn hệ thống
-    count = conn.execute("SELECT COUNT(*) FROM users WHERE username=?", (base_user,)).fetchone()[0]
+    c = conn.cursor()
     
-    if count > 0:
-        # Nếu đã có người mang username này, BẮT BUỘC cần ngày sinh
-        if not dob or str(dob).lower() in ['nan', 'none', '']: 
-            conn.close()
-            return None # Trả về None để hệ thống báo lỗi cần ngày sinh
-        
-        suffix = "".join(filter(str.isdigit, str(dob)))
-        new_user = f"{base_user}{suffix}"
-        
-        # Kiểm tra xem có ai trùng luôn cả ngày sinh không
-        count_dob = conn.execute("SELECT COUNT(*) FROM users WHERE username=?", (new_user,)).fetchone()[0]
+    # Kịch bản 1: Tài khoản gốc chưa ai dùng
+    c.execute("SELECT COUNT(*) FROM users WHERE username=?", (base_user,))
+    if c.fetchone()[0] == 0:
         conn.close()
+        return base_user
         
-        if count_dob > 0:
-            # Nếu xui xẻo trùng cả họ tên và ngày sinh, cấp thêm 2 số ngẫu nhiên
-            return f"{new_user}{random.randint(10,99)}"
-        return new_user
-    
-    conn.close()
-    return base_user
+    # Kịch bản 2: Bị trùng (như Dương Tùng Anh & Dương Tùng Ánh)
+    # Thử dùng Ngày sinh nếu có
+    if dob and str(dob).lower() not in ['nan', 'none', '']:
+        suffix = "".join(filter(str.isdigit, str(dob)))
+        dob_user = f"{base_user}{suffix}"
+        c.execute("SELECT COUNT(*) FROM users WHERE username=?", (dob_user,))
+        if c.fetchone()[0] == 0:
+            conn.close()
+            return dob_user
+        base_user = dob_user # Nếu trùng luôn cả ngày sinh, lấy đây làm gốc để chạy số
+        
+    # Kịch bản 3: Không có ngày sinh hoặc xui xẻo trùng toàn tập -> Chạy số thứ tự tự động
+    counter = 1
+    while True:
+        new_user = f"{base_user}_{counter}"
+        c.execute("SELECT COUNT(*) FROM users WHERE username=?", (new_user,))
+        if c.fetchone()[0] == 0:
+            conn.close()
+            return new_user
+        counter += 1
 
 # ==========================================
 # 2. HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU & NHẬT KÝ
@@ -70,7 +80,6 @@ def init_db():
         fullname TEXT, dob TEXT, class_name TEXT, 
         school TEXT, managed_classes TEXT)''')
     
-    # Migration tự động tránh KeyError
     try: c.execute("ALTER TABLE users ADD COLUMN school TEXT")
     except: pass
     try: c.execute("ALTER TABLE users ADD COLUMN managed_classes TEXT")
@@ -167,7 +176,7 @@ def import_student_module():
         up = st.file_uploader("Nạp Excel", type="xlsx")
         if up and st.button("🚀 Nạp dữ liệu"):
             df = pd.read_excel(up)
-            df.columns = df.columns.str.strip() # Dọn dẹp khoảng trắng ở tên cột
+            df.columns = df.columns.str.strip() 
             
             if not all(col in df.columns for col in ["Họ và tên", "Lớp"]):
                 st.error("❌ File Excel không hợp lệ. Vui lòng sử dụng File Mẫu!")
@@ -177,28 +186,25 @@ def import_student_module():
                 error_details = []
                 
                 for idx, r in df.iterrows():
-                    row_index = idx + 2 # Chỉ rõ dòng trong file Excel
+                    row_index = idx + 2 
                     name = str(r.get('Họ và tên', '')).strip()
                     dob = str(r.get('Ngày sinh', '')).strip()
                     cls = str(r.get('Lớp', '')).strip()
                     sch = str(r.get('Tên trường', '')).strip()
                     
                     if name and name.lower() != 'nan' and cls and cls.lower() != 'nan':
-                        uname = gen_smart_username(name, dob) # Gọi hàm sinh username mới
+                        uname = gen_smart_username(name, dob) 
                         if uname:
                             try:
                                 conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)",
                                              (uname, uname, 'student', name, dob, cls, sch))
                                 s += 1
-                            except sqlite3.IntegrityError:
-                                f += 1
-                                error_details.append(f"- **Dòng {row_index}:** Tài khoản `{uname}` đã tồn tại.")
                             except Exception as e:
                                 f += 1
                                 error_details.append(f"- **Dòng {row_index}:** Lỗi hệ thống ({str(e)}).")
                         else: 
                             f += 1
-                            error_details.append(f"- **Dòng {row_index}:** Học sinh '{name}' bị trùng tên trên hệ thống. **Bắt buộc nhập Ngày sinh**.")
+                            error_details.append(f"- **Dòng {row_index}:** Lỗi không thể tạo Username.")
                     else: 
                         f += 1
                         error_details.append(f"- **Dòng {row_index}:** Bỏ trống Họ Tên hoặc Lớp.")
@@ -207,20 +213,19 @@ def import_student_module():
                 conn.close()
                 
                 if f == 0:
-                    st.success(f"✅ Tạo thành công toàn bộ {s} tài khoản!")
+                    st.success(f"✅ Tuyệt vời! Hệ thống đã tạo thành công toàn bộ {s} tài khoản học sinh. Nếu có trùng tên, hệ thống đã tự động thêm số thứ tự để tránh xung đột.")
                 else:
                     st.success(f"✅ Tạo thành công: {s} tài khoản.")
-                    st.error(f"❌ Thất bại: {f} tài khoản. Vui lòng xem chi tiết bên dưới:")
-                    with st.expander("🔍 Nhấn vào đây để xem chi tiết lỗi từng dòng trong File Excel", expanded=True):
-                        for err in error_details:
-                            st.markdown(err)
+                    st.error(f"❌ Bỏ qua: {f} dòng bị lỗi (Thiếu họ tên/Lớp). Vui lòng xem chi tiết bên dưới:")
+                    with st.expander("🔍 Xem chi tiết lỗi từng dòng", expanded=True):
+                        for err in error_details: st.markdown(err)
             
     with t2:
         with st.form("manual_add_st"):
             c1, c2 = st.columns(2)
             n = c1.text_input("Họ và Tên (Bắt buộc)")
             c = c2.text_input("Lớp (Bắt buộc)")
-            d = c1.text_input("Ngày sinh (Chỉ bắt buộc nếu trùng tên)")
+            d = c1.text_input("Ngày sinh (Tùy chọn)")
             sch = c2.text_input("Trường")
             if st.form_submit_button("✅ Tạo tài khoản học sinh"):
                 if not n or not c:
@@ -232,12 +237,12 @@ def import_student_module():
                         try:
                             conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)", (u, u, 'student', n, d, c, sch))
                             conn.commit()
-                            st.success(f"✅ Đã tạo tài khoản: {u}")
+                            st.success(f"✅ Đã tạo tài khoản: **{u}** (Mật khẩu: {u})")
                         except sqlite3.IntegrityError:
-                            st.error("Lỗi: Tài khoản này đã được tạo từ trước!")
+                            st.error("Lỗi: Tài khoản này đã tồn tại!")
                         conn.close()
                     else: 
-                        st.error("❌ Trùng tên trên hệ thống! Bạn bắt buộc phải nhập Ngày sinh để tạo sự khác biệt.")
+                        st.error("❌ Lỗi hệ thống khi tạo tài khoản.")
 
 # --- MODULE XÓA LỚP HỌC ĐỒNG BỘ (CHỈ DÀNH CHO ADMIN LÕI) ---
 def delete_class_module(all_classes):
@@ -382,6 +387,14 @@ def main():
                 account_manager_ui("student", specific_class=filter_class)
             with t2: 
                 import_student_module()
+                
+        elif choice == "🤖 AI Sinh đề":
+            st.header("🤖 Trí tuệ nhân tạo sinh đề")
+            st.info("Khu vực kết nối AI tạo đề ngẫu nhiên...")
+
+        elif choice == "📤 Phát đề/Giao bài":
+            st.header("📤 Phát đề/Giao bài tập")
+            st.info("Khu vực cấu hình phát bài tập cho học sinh...")
 
 if __name__ == "__main__":
     main()
