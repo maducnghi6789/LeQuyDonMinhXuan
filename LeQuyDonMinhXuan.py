@@ -200,7 +200,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (VƯỢT RÀO 100% CÁC LỖI 404)
+# 4. MODULE AI KHẢO THÍ (CẬP NHẬT GEMINI 2.5)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -209,34 +209,34 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Trái tim AI: Lần lượt thử các model từ xịn nhất đến cổ điển nhất để chống lỗi 404 Not Found"""
+    """Trái tim AI: Tự động dùng phiên bản 2.5 mới nhất của Google để khắc phục lỗi 404"""
     genai.configure(api_key=api_key)
     errors = []
     
-    # Ưu tiên 1: Gemini 1.5 Flash (Nhanh, mạnh, ít bị block)
+    # Ưu tiên 1: Gemini 2.5 Flash (Bản tiêu chuẩn mới nhất, cực nhanh, thay thế cho 1.5)
     try:
-        m1 = genai.GenerativeModel('gemini-1.5-flash')
+        m1 = genai.GenerativeModel('gemini-2.5-flash')
         res1 = m1.generate_content(prompt)
         return json.loads(clean_ai_json(res1.text))
     except Exception as e1:
-        errors.append(f"Flash lỗi: {e1}")
+        errors.append(f"2.5 Flash lỗi: {e1}")
         
-        # Ưu tiên 2: Gemini 1.5 Pro
+        # Ưu tiên 2: Gemini 2.5 Pro (Bản xịn nhất cho tài khoản PRO)
         try:
-            m2 = genai.GenerativeModel('gemini-1.5-pro')
+            m2 = genai.GenerativeModel('gemini-2.5-pro')
             res2 = m2.generate_content(prompt)
             return json.loads(clean_ai_json(res2.text))
         except Exception as e2:
-            errors.append(f"Pro lỗi: {e2}")
+            errors.append(f"2.5 Pro lỗi: {e2}")
             
-            # CỨU CÁNH CUỐI CÙNG: Gemini Pro 1.0 (Chắc chắn 100% hoạt động với mọi API Key)
+            # Ưu tiên 3: Gemini 2.0 Flash (Cứu cánh siêu ổn định)
             try:
-                m3 = genai.GenerativeModel('gemini-pro')
+                m3 = genai.GenerativeModel('gemini-2.0-flash')
                 res3 = m3.generate_content(prompt)
                 return json.loads(clean_ai_json(res3.text))
             except Exception as e3:
-                errors.append(f"Classic 1.0 lỗi: {e3}")
-                return f"Lỗi API: Không thể truy cập bất kỳ phiên bản Gemini nào. Vui lòng kiểm tra lại API Key. Chi tiết: {' | '.join(errors)}"
+                errors.append(f"2.0 Flash lỗi: {e3}")
+                return f"Lỗi Máy chủ Google API: {' | '.join(errors)}"
 
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Bạn là một giáo viên chuyên Toán cấp 2. Nhiệm vụ của bạn là đọc văn bản trích xuất từ đề thi PDF dưới đây, biên tập lại thành chuẩn đúng 40 câu hỏi trắc nghiệm.
@@ -428,6 +428,7 @@ def main():
 
         elif choice == "📤 Giao đề thi thử":
             st.header("📤 Giao đề thi thử (Bằng File PDF)")
+            st.info("💡 Tải file PDF chứa đề trắc nghiệm. AI sẽ tự động đọc, tạo hướng dẫn giải và ép chuẩn công thức Toán (LaTeX).")
             if not api_key: st.error("❌ Hệ thống chưa cấu hình Gemini API Key.")
             else:
                 target_classes = ["Tất cả các lớp"] + all_cl if role == "core_admin" else [x.strip() for x in st.session_state.managed.split(',')]
