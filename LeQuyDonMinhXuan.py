@@ -16,8 +16,8 @@ from datetime import datetime, timedelta, timezone
 from PIL import Image
 
 # --- CẤU HÌNH ADMIN TỐI CAO ---
-ADMIN_CORE_EMAIL = "nghihgtq@gmail.com"
-ADMIN_CORE_PW = "GiámĐốc2026"
+ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
+ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
 
 # ==========================================
