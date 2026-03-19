@@ -22,7 +22,7 @@ ADMIN_CORE_PW = "GiámĐốc2026"
 VN_TZ = timezone(timedelta(hours=7))
 
 # ==========================================
-# 1. TIỆN ÍCH XỬ LÝ USERNAME & CHUỖI
+# 1. TIỆN ÍCH XỬ LÝ USERNAME (lqd_ + không dấu)
 # ==========================================
 def remove_accents(input_str):
     if not input_str: return ""
@@ -80,7 +80,7 @@ def get_api_key():
     return res[0] if res else ""
 
 # ==========================================
-# 3. MODULE QUẢN LÝ ĐỒNG BỘ (CÓ TÍNH NĂNG XÓA LỚP)
+# 3. MODULE TÁC VỤ (QUẢN LÝ, NHẬP LIỆU, XÓA LỚP)
 # ==========================================
 def account_manager_ui(target_role, specific_class=None):
     st.markdown(f"#### 🛠️ Quản lý danh sách {target_role}")
@@ -118,6 +118,57 @@ def account_manager_ui(target_role, specific_class=None):
     else: st.info("Chưa có dữ liệu.")
     conn.close()
 
+# --- MODULE TẠO TÀI KHOẢN & NHẬP DỮ LIỆU ---
+def import_student_module():
+    st.markdown("### 📥 Nhập dữ liệu & Tạo tài khoản Học sinh")
+    t1, t2 = st.tabs(["📁 Nạp File Excel", "✍️ Nhập thủ công"])
+    with t1:
+        df_sample = pd.DataFrame(columns=["Họ và tên", "Ngày sinh", "Lớp", "Tên trường"])
+        df_sample.loc[0] = ["Nguyễn Văn An", "15/08/2010", "9A1", "Lê Quý Đôn"]
+        out = BytesIO()
+        with pd.ExcelWriter(out, engine='openpyxl') as w: df_sample.to_excel(w, index=False)
+        st.download_button("⬇️ Tải file mẫu", out.getvalue(), "Mau_Hoc_Sinh.xlsx")
+        
+        up = st.file_uploader("Nạp Excel", type="xlsx")
+        if up and st.button("🚀 Nạp dữ liệu"):
+            df = pd.read_excel(up)
+            conn = sqlite3.connect('exam_db.sqlite')
+            s, f = 0, 0
+            for _, r in df.iterrows():
+                name, dob, cls, sch = str(r.get('Họ và tên', '')), str(r.get('Ngày sinh', '')), str(r.get('Lớp', '')), str(r.get('Tên trường', ''))
+                if name and name.lower() != 'nan' and cls and cls.lower() != 'nan':
+                    uname = gen_smart_username(name, dob, cls)
+                    if uname:
+                        try:
+                            conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)",
+                                         (uname, uname, 'student', name, dob, cls, sch))
+                            s += 1
+                        except: f += 1
+                    else: f += 1
+                else: f += 1
+            conn.commit(); conn.close(); st.success(f"✅ Tạo thành công: {s} tài khoản | ❌ Thất bại: {f} (Trùng tên thiếu ngày sinh hoặc thiếu dữ liệu)")
+    with t2:
+        with st.form("manual_add_st"):
+            c1, c2 = st.columns(2)
+            n = c1.text_input("Họ và Tên (Bắt buộc)")
+            c = c2.text_input("Lớp (Bắt buộc)")
+            d = c1.text_input("Ngày sinh (Bắt buộc nếu trùng)")
+            sch = c2.text_input("Trường")
+            if st.form_submit_button("✅ Tạo tài khoản học sinh"):
+                if not n or not c:
+                    st.error("Vui lòng điền đủ Họ tên và Lớp!")
+                else:
+                    u = gen_smart_username(n, d, c)
+                    if u:
+                        conn = sqlite3.connect('exam_db.sqlite')
+                        try:
+                            conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)", (u, u, 'student', n, d, c, sch))
+                            conn.commit(); st.success(f"✅ Đã tạo tài khoản: {u}")
+                        except:
+                            st.error("Lỗi: Tài khoản đã tồn tại!")
+                        conn.close()
+                    else: st.error("Trùng tên! Yêu cầu nhập thêm Ngày sinh.")
+
 # --- MODULE XÓA LỚP HỌC ĐỒNG BỘ ---
 def delete_class_module(all_classes):
     st.markdown("### 🚨 Dọn dẹp & Xóa lớp học")
@@ -132,22 +183,15 @@ def delete_class_module(all_classes):
         confirm = st.checkbox(f"Tôi xác nhận xóa sạch dữ liệu của lớp {selected_del_class}")
         
         if st.button("🗑 TIẾN HÀNH XÓA LỚP", type="primary"):
-            if not reason:
-                st.error("Vui lòng nhập lý do xóa!")
-            elif not confirm:
-                st.error("Bạn phải tích vào ô xác nhận!")
+            if not reason: st.error("Vui lòng nhập lý do xóa!")
+            elif not confirm: st.error("Bạn phải tích vào ô xác nhận!")
             else:
                 conn = sqlite3.connect('exam_db.sqlite')
-                # Lấy danh sách username học sinh trong lớp để xóa kết quả đồng bộ
                 stu_usernames = [r[0] for r in conn.execute("SELECT username FROM users WHERE class_name=? AND role='student'", (selected_del_class,)).fetchall()]
-                
                 log_deletion(st.session_state.current_user, "Lớp học", selected_del_class, reason)
-                
-                # Thực hiện xóa đồng bộ
                 for u in stu_usernames:
                     conn.execute("DELETE FROM mandatory_results WHERE username=?", (u,))
                 conn.execute("DELETE FROM users WHERE class_name=? AND role='student'", (selected_del_class,))
-                
                 conn.commit(); conn.close()
                 st.success(f"✅ Đã xóa thành công lớp {selected_del_class} và dọn dẹp dữ liệu đồng bộ!")
                 time.sleep(1); st.rerun()
@@ -156,7 +200,7 @@ def delete_class_module(all_classes):
 # 4. GIAO DIỆN CHÍNH
 # ==========================================
 def main():
-    st.set_page_config(page_title="LMS Lê Quý Đôn V100 Supreme Sync", layout="wide")
+    st.set_page_config(page_title="LMS Lê Quý Đôn V100 Supreme", layout="wide")
     init_db()
 
     if 'current_user' not in st.session_state:
@@ -200,20 +244,30 @@ def main():
 
         if choice == "🛡️ Quản trị tối cao":
             st.header("🛡️ Quản trị tối cao (Admin Lõi)")
-            t1, t2, t3 = st.tabs(["👥 Admin thành viên", "🎓 Giám sát Học sinh", "🚨 Xóa lớp học"])
-            with t1: account_manager_ui("sub_admin")
+            t1, t2, t3, t4 = st.tabs(["👥 Admin thành viên", "🎓 Giám sát Học sinh", "📥 Nhập dữ liệu HS", "🚨 Xóa lớp học"])
+            with t1:
+                with st.form("add_sa"):
+                    u_s, p_s = st.text_input("Username Admin TV"), st.text_input("Mật khẩu")
+                    n_s, m_s = st.text_input("Họ tên"), st.text_input("Lớp/Vùng quản lý")
+                    if st.form_submit_button("✅ Cấp quyền Admin TV"):
+                        conn = sqlite3.connect('exam_db.sqlite')
+                        conn.execute("INSERT INTO users (username, password, role, fullname, managed_classes) VALUES (?,?,'sub_admin',?,?)", (u_s, p_s, n_s, m_s))
+                        conn.commit(); conn.close(); st.rerun()
+                st.divider()
+                account_manager_ui("sub_admin")
             with t2:
                 sel_cl = st.selectbox("📌 Xem theo lớp:", ["Tất cả các lớp"] + all_cl)
                 account_manager_ui("student", specific_class=sel_cl)
-            with t3: delete_class_module(all_cl)
+            with t3: import_student_module()
+            with t4: delete_class_module(all_cl)
 
         elif choice == "👥 Quản lý khu vực":
             st.header("👥 Quản lý khu vực (Admin Thành viên)")
-            # Lọc các lớp mà Admin TV này được phép quản lý
             my_classes = [x.strip() for x in st.session_state.managed.split(',')] if st.session_state.managed else []
-            t1, t2 = st.tabs(["🎓 Danh sách học sinh", "🚨 Xóa lớp quản lý"])
-            with t1: account_manager_ui("student", specific_class="Tất cả các lớp") # Tự động lọc trong UI nội bộ
-            with t2: delete_class_module(my_classes)
+            t1, t2, t3 = st.tabs(["🎓 Danh sách học sinh", "📥 Nhập dữ liệu HS", "🚨 Xóa lớp quản lý"])
+            with t1: account_manager_ui("student", specific_class="Tất cả các lớp")
+            with t2: import_student_module()
+            with t3: delete_class_module(my_classes)
 
 if __name__ == "__main__":
     main()
