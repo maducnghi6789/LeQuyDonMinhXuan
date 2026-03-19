@@ -38,7 +38,7 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
-    """Dọn dẹp chuỗi JSON an toàn chống lỗi Cú pháp và lỗi hiển thị UI"""
+    """Dọn dẹp chuỗi JSON an toàn chống lỗi Cú pháp (SyntaxError)"""
     res = json_str.strip()
     md_json = "`" * 3 + "json"
     md_code = "`" * 3
@@ -245,7 +245,7 @@ def generate_free_practice_ai(api_key):
     except Exception: return None
 
 # ==========================================
-# 5. GIAO DIỆN HỌC SINH (LÀM BÀI THI CÓ ĐẾM NGƯỢC)
+# 5. GIAO DIỆN HỌC SINH (LÀM BÀI THI)
 # ==========================================
 def take_exam_ui(exam_data, exam_id, is_mandatory=True):
     st.markdown(f"### 📝 {exam_data.get('title', 'Luyện đề tự do')}")
@@ -324,7 +324,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True):
             st.rerun()
 
 # ==========================================
-# 6. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH ĐỒNG BỘ
+# 6. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH
 # ==========================================
 def main():
     st.set_page_config(page_title="LMS Lê Quý Đôn V200", layout="wide")
@@ -362,7 +362,6 @@ def main():
                     conn.commit(); conn.close(); st.success("✅ Đã lưu!")
             st.markdown("---")
             
-            # --- MENU CHÍNH ---
             if role in ["core_admin", "sub_admin"]:
                 menu = ["📤 Giao đề thi thử", "📊 Thống kê", "🔐 Cá nhân"]
                 if role == "core_admin": menu = ["🛡️ Quản trị tối cao"] + menu
@@ -373,7 +372,6 @@ def main():
             choice = st.radio("Menu chính", menu)
             if st.button("🚪 Thoát", use_container_width=True): st.session_state.clear(); st.rerun()
 
-        # ĐỒNG BỘ DANH SÁCH LỚP
         if role in ["core_admin", "sub_admin"]:
             conn = sqlite3.connect('exam_db.sqlite')
             c_stu = [r[0].strip() for r in conn.execute("SELECT DISTINCT class_name FROM users WHERE role='student' AND class_name != ''").fetchall()]
@@ -383,7 +381,6 @@ def main():
             all_cl = sorted(list(set(c_stu + c_man)))
             conn.close()
 
-        # ================= ROUTING =================
         if choice == "🛡️ Quản trị tối cao":
             st.header("🛡️ Quản trị tối cao (Admin Lõi)")
             t1, t2, t3, t4 = st.tabs(["👥 Admin thành viên", "🎓 Quản lý Học sinh", "📥 Nhập dữ liệu HS", "🚨 Xóa lớp học"])
@@ -418,7 +415,6 @@ def main():
 
         elif choice == "📤 Giao đề thi thử":
             st.header("📤 Giao đề thi thử (Bằng File PDF)")
-            st.info("💡 Tải file PDF chứa đề trắc nghiệm. AI sẽ tự động đọc, tạo hướng dẫn giải và ép chuẩn công thức Toán (LaTeX).")
             if not api_key: st.error("❌ Hệ thống chưa cấu hình Gemini API Key.")
             else:
                 target_classes = ["Tất cả các lớp"] + all_cl if role == "core_admin" else [x.strip() for x in st.session_state.managed.split(',')]
@@ -442,7 +438,6 @@ def main():
                                 else: st.error("❌ AI không thể xử lý File PDF này. Hãy đảm bảo File chứa văn bản rõ ràng.")
                         else: st.warning("Vui lòng điền Tên bài và tải File!")
 
-        # ================= MODULE MỚI: THỐNG KÊ (THAY CHO BẢNG ĐIỂM) =================
         elif choice == "📊 Thống kê":
             st.header("📊 Thống kê & Phân tích Đề thi")
             conn = sqlite3.connect('exam_db.sqlite')
@@ -546,7 +541,6 @@ def main():
 
         elif choice == "🚀 Luyện đề tự do":
             st.header("🚀 Luyện đề tự do (AI Sinh đề)")
-            st.info("🤖 AI sẽ mix 40 câu hỏi Vận dụng & Vận dụng cao hoàn toàn mới bám sát đề thi HSG. Thời gian: 90 phút.")
             if st.session_state.get('taking_free_exam') is None:
                 if st.button("🪄 BẤM ĐỂ AI TẠO ĐỀ & VÀO THI", type="primary"):
                     if not api_key: st.error("❌ Hệ thống chưa kết nối AI.")
