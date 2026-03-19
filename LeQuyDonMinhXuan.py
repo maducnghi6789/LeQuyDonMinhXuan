@@ -3,12 +3,9 @@ matplotlib.use('Agg')
 import streamlit as st
 import pandas as pd
 import sqlite3
-import base64
 import json
-import re
 import time
 import unicodedata
-import copy
 import random
 from io import BytesIO
 import matplotlib.pyplot as plt
@@ -41,14 +38,13 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
-    """Hàm dọn dẹp chuỗi JSON từ AI an toàn, chống lỗi SyntaxError"""
+    """Dọn dẹp chuỗi JSON an toàn chống lỗi Cú pháp và lỗi hiển thị UI"""
     res = json_str.strip()
-    if res.startswith("```json"):
-        res = res[7:]
-    if res.startswith("```"):
-        res = res[3:]
-    if res.endswith("```"):
-        res = res[:-3]
+    md_json = "`" * 3 + "json"
+    md_code = "`" * 3
+    if res.startswith(md_json): res = res[7:]
+    if res.startswith(md_code): res = res[3:]
+    if res.endswith(md_code): res = res[:-3]
     return res.strip()
 
 def get_api_key():
@@ -75,6 +71,7 @@ def init_db():
             
     c.execute('''CREATE TABLE IF NOT EXISTS system_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT)''')
     
+    # BẢNG ĐỀ THI VÀ ĐIỂM SỐ
     c.execute('''CREATE TABLE IF NOT EXISTS mandatory_exams (id INTEGER PRIMARY KEY AUTOINCREMENT)''')
     exam_cols = [("title", "TEXT"), ("questions_json", "TEXT"), ("time_limit", "INTEGER"), ("target_class", "TEXT"), ("created_by", "TEXT"), ("timestamp", "DATETIME DEFAULT CURRENT_TIMESTAMP")]
     c.execute("PRAGMA table_info(mandatory_exams)")
@@ -102,7 +99,7 @@ def log_deletion(deleted_by, entity_type, entity_name, reason):
     except: pass
 
 # ==========================================
-# 3. QUẢN LÝ NHÂN SỰ & HỌC SINH
+# 3. QUẢN LÝ NHÂN SỰ & HỌC SINH (MK MẶC ĐỊNH 123@)
 # ==========================================
 def account_manager_ui(target_role, specific_class=None):
     st.markdown(f"#### 🛠️ Quản lý {target_role}")
@@ -215,40 +212,40 @@ def extract_text_from_pdf(pdf_file):
 def parse_exam_with_ai(raw_text, api_key):
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-1.5-pro')
-    prompt = f"""Bạn là chuyên gia Toán học. Hãy đọc văn bản được trích xuất từ đề thi PDF sau. Nhiệm vụ của bạn là nhận diện chính xác các câu hỏi trắc nghiệm, biên tập lại cho chuẩn, và viết thêm hướng dẫn giải ngắn gọn cho từng câu.
+    prompt = f"""Bạn là một giáo viên chuyên Toán cấp 2. Nhiệm vụ của bạn là đọc văn bản trích xuất từ đề thi PDF dưới đây, biên tập lại thành chuẩn đúng 40 câu hỏi trắc nghiệm, tạo hướng dẫn giải ngắn gọn.
     YÊU CẦU BẮT BUỘC:
-    1. Trả về đúng định dạng JSON array: [{{"q": "Nội dung câu hỏi", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "ans": "A", "exp": "Hướng dẫn giải..."}}]
-    2. Các công thức toán học PHẢI được viết bằng mã LaTeX chuẩn. Sử dụng $ cho công thức trong dòng (ví dụ $x^2 + 1$) và $$ cho công thức đứng riêng. Không dùng unicode.
+    1. Trả về DUY NHẤT mảng JSON array. Định dạng: [{{"q": "Nội dung câu hỏi", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "ans": "A", "exp": "Hướng dẫn giải..."}}]
+    2. Công thức toán học PHẢI dùng chuẩn LaTeX (dùng $ cho inline và $$ cho block).
     3. Đảm bảo parse đủ số lượng câu hỏi có trong văn bản.
-    
-    Văn bản thô:
+
+    VĂN BẢN ĐỀ THI:
     {raw_text}
     """
     try:
         response = model.generate_content(prompt)
         json_str = clean_ai_json(response.text)
         return json.loads(json_str)
-    except Exception as e:
-        return None
+    except Exception: return None
 
 def generate_free_practice_ai(api_key):
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    prompt = """Bạn là một giáo viên chuyên bồi dưỡng Toán lớp 9. Hãy tạo ra một đề kiểm tra trắc nghiệm 40 câu hỏi hoàn toàn mới, mức độ Khó (Vận dụng, Vận dụng cao), bám sát thi HSG lớp 9 hoặc thi vào chuyên Toán.
+    model = genai.GenerativeModel('gemini-1.5-pro')
+    prompt = """Bạn là chuyên gia bồi dưỡng học sinh giỏi Toán lớp 9. Hãy tự động sáng tác một đề kiểm tra trắc nghiệm gồm 40 câu hỏi mức độ Vận dụng và Vận dụng cao.
     YÊU CẦU ĐỀ BÀI:
-    - Chủ đề đa dạng: Đại số (Hệ phương trình, Bất đẳng thức), Hình học, Số học. Không lặp lại nội dung. Số liệu và ngữ cảnh sinh động.
-    - Trả về đúng định dạng JSON array: [{"q": "Nội dung câu", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn giải..."}]
-    - BẮT BUỘC SỬ DỤNG LaTeX: Dùng $ cho công thức trong chữ và $$ cho riêng biệt.
+    - Nội dung: Đại số (Hệ phương trình, Bất đẳng thức, Rút gọn biểu thức), Hình học (Đường tròn, Chứng minh), Số học (Chia hết, Phương trình nghiệm nguyên).
+    - Ngữ cảnh: Có bài toán thực tế sinh động, số liệu mới mẻ, không lặp lại.
+    - YÊU CẦU BẮT BUỘC VỀ ĐỊNH DẠNG:
+      1. Trả về DUY NHẤT mảng JSON. Định dạng: [{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Cách giải chi tiết ngắn gọn..."}]
+      2. Toàn bộ công thức TOÁN học PHẢI được bọc trong $ (inline) hoặc $$ (block) chuẩn LaTeX.
     """
     try:
         response = model.generate_content(prompt)
         json_str = clean_ai_json(response.text)
         return json.loads(json_str)
-    except:
-        return None
+    except Exception: return None
 
 # ==========================================
-# 5. GIAO DIỆN HỌC SINH (LÀM BÀI THI)
+# 5. GIAO DIỆN HỌC SINH (LÀM BÀI THI CÓ ĐẾM NGƯỢC)
 # ==========================================
 def take_exam_ui(exam_data, exam_id, is_mandatory=True):
     st.markdown(f"### 📝 {exam_data.get('title', 'Luyện đề tự do')}")
@@ -327,7 +324,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True):
             st.rerun()
 
 # ==========================================
-# 6. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH
+# 6. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH ĐỒNG BỘ
 # ==========================================
 def main():
     st.set_page_config(page_title="LMS Lê Quý Đôn V200", layout="wide")
@@ -347,7 +344,7 @@ def main():
                         st.session_state.current_user = u
                         st.session_state.role, st.session_state.fullname, st.session_state.class_name, st.session_state.managed = res
                         st.rerun()
-                    else: st.error("❌ Sai thông tin!")
+                    else: st.error("❌ Sai thông tin đăng nhập!")
     else:
         role = st.session_state.role
         with st.sidebar:
@@ -365,16 +362,18 @@ def main():
                     conn.commit(); conn.close(); st.success("✅ Đã lưu!")
             st.markdown("---")
             
+            # --- MENU CHÍNH ---
             if role in ["core_admin", "sub_admin"]:
-                menu = ["📤 Giao đề thi thử", "📊 Bảng điểm"]
+                menu = ["📤 Giao đề thi thử", "📊 Thống kê", "🔐 Cá nhân"]
                 if role == "core_admin": menu = ["🛡️ Quản trị tối cao"] + menu
                 elif role == "sub_admin": menu = ["👥 Quản lý khu vực"] + menu
             elif role == "student":
-                menu = ["✍️ Kiểm tra bắt buộc", "🚀 Luyện đề tự do", "📊 Điểm số cá nhân"]
+                menu = ["✍️ Kiểm tra bắt buộc", "🚀 Luyện đề tự do", "📊 Điểm số cá nhân", "🔐 Cá nhân"]
                 
             choice = st.radio("Menu chính", menu)
             if st.button("🚪 Thoát", use_container_width=True): st.session_state.clear(); st.rerun()
 
+        # ĐỒNG BỘ DANH SÁCH LỚP
         if role in ["core_admin", "sub_admin"]:
             conn = sqlite3.connect('exam_db.sqlite')
             c_stu = [r[0].strip() for r in conn.execute("SELECT DISTINCT class_name FROM users WHERE role='student' AND class_name != ''").fetchall()]
@@ -384,9 +383,10 @@ def main():
             all_cl = sorted(list(set(c_stu + c_man)))
             conn.close()
 
+        # ================= ROUTING =================
         if choice == "🛡️ Quản trị tối cao":
-            st.header("🛡️ Quản trị tối cao")
-            t1, t2, t3 = st.tabs(["👥 Admin thành viên", "🎓 Quản lý Học sinh", "🚨 Quản lý Lớp"])
+            st.header("🛡️ Quản trị tối cao (Admin Lõi)")
+            t1, t2, t3, t4 = st.tabs(["👥 Admin thành viên", "🎓 Quản lý Học sinh", "📥 Nhập dữ liệu HS", "🚨 Xóa lớp học"])
             with t1:
                 with st.form("add_sa"):
                     u_s, p_s, n_s, m_s = st.text_input("User"), st.text_input("Pass"), st.text_input("Tên"), st.text_input("Lớp (VD: 9A, 9E)")
@@ -395,16 +395,15 @@ def main():
                         try:
                             conn.execute("INSERT INTO users (username, password, role, fullname, managed_classes) VALUES (?,?,'sub_admin',?,?)", (u_s, p_s, n_s, m_s))
                             conn.commit(); st.success("Xong!"); st.rerun()
-                        except: st.error("Đã có User!")
+                        except: st.error("Đã có User này!")
                         conn.close()
                 account_manager_ui("sub_admin")
             with t2:
                 sel = st.selectbox("Lớp:", ["Tất cả"] + all_cl)
                 account_manager_ui("student", specific_class=sel if sel != "Tất cả" else None)
-                st.divider()
-                import_student_module()
-            with t3: delete_class_module(all_cl)
-                
+            with t3: import_student_module()
+            with t4: delete_class_module(all_cl)
+
         elif choice == "👥 Quản lý khu vực":
             st.header("👥 Quản lý khu vực")
             conn = sqlite3.connect('exam_db.sqlite')
@@ -418,43 +417,128 @@ def main():
             with t2: import_student_module()
 
         elif choice == "📤 Giao đề thi thử":
-            st.header("📤 Giao đề thi thử (AI Xử lý PDF)")
-            st.info("Hệ thống AI sẽ tự động đọc PDF, nhận diện câu hỏi, biên soạn lại chuẩn LaTeX và viết hướng dẫn giải.")
-            if not api_key: st.error("❌ Vui lòng yêu cầu Admin Lõi cài đặt Gemini API Key!")
+            st.header("📤 Giao đề thi thử (Bằng File PDF)")
+            st.info("💡 Tải file PDF chứa đề trắc nghiệm. AI sẽ tự động đọc, tạo hướng dẫn giải và ép chuẩn công thức Toán (LaTeX).")
+            if not api_key: st.error("❌ Hệ thống chưa cấu hình Gemini API Key.")
             else:
-                target_classes = all_cl if role == "core_admin" else [x.strip() for x in st.session_state.managed.split(',')]
-                with st.form("upload_exam"):
+                target_classes = ["Tất cả các lớp"] + all_cl if role == "core_admin" else [x.strip() for x in st.session_state.managed.split(',')]
+                with st.form("upload_pdf"):
                     e_title = st.text_input("Tên bài kiểm tra:")
-                    e_class = st.selectbox("Giao cho lớp:", target_classes)
-                    e_time = st.number_input("Thời gian làm bài (Phút):", min_value=15, value=90, step=5)
-                    e_file = st.file_uploader("Tải lên đề thi (PDF)", type="pdf")
-                    if st.form_submit_button("🚀 AI BIÊN TẬP VÀ GIAO ĐỀ"):
+                    e_class = st.selectbox("Giao bài cho lớp:", target_classes)
+                    e_time = st.number_input("Thời gian (Phút):", min_value=15, value=90, step=5)
+                    e_file = st.file_uploader("Tải Đề thi (PDF)", type="pdf")
+                    
+                    if st.form_submit_button("🚀 BIÊN TẬP & GIAO ĐỀ BẰNG AI"):
                         if e_title and e_file:
-                            with st.spinner("🤖 AI đang phân tích PDF... (Có thể mất 1-2 phút)"):
-                                raw_text = extract_text_from_pdf(e_file)
-                                exam_json = parse_exam_with_ai(raw_text, api_key)
+                            with st.spinner("🤖 AI đang giải đề và phân tích PDF... (Có thể mất 1-2 phút)"):
+                                raw_txt = extract_text_from_pdf(e_file)
+                                exam_json = parse_exam_with_ai(raw_txt, api_key)
                                 if exam_json:
                                     conn = sqlite3.connect('exam_db.sqlite')
-                                    conn.execute("INSERT INTO mandatory_exams (title, questions_json, time_limit, target_class, created_by) VALUES (?,?,?,?,?)", (e_title, json.dumps(exam_json), e_time, e_class, st.session_state.current_user))
+                                    conn.execute("INSERT INTO mandatory_exams (title, questions_json, time_limit, target_class, created_by) VALUES (?,?,?,?,?)",
+                                                 (e_title, json.dumps(exam_json), e_time, e_class, st.session_state.current_user))
                                     conn.commit(); conn.close()
-                                    st.success(f"✅ Đã biên tập thành công {len(exam_json)} câu hỏi và giao cho lớp {e_class}!")
-                                else: st.error("❌ AI không thể xử lý File PDF này.")
-                        else: st.warning("Vui lòng điền tên bài và tải lên file PDF!")
+                                    st.success(f"✅ Đã giao {len(exam_json)} câu hỏi cho lớp {e_class}!")
+                                else: st.error("❌ AI không thể xử lý File PDF này. Hãy đảm bảo File chứa văn bản rõ ràng.")
+                        else: st.warning("Vui lòng điền Tên bài và tải File!")
+
+        # ================= MODULE MỚI: THỐNG KÊ (THAY CHO BẢNG ĐIỂM) =================
+        elif choice == "📊 Thống kê":
+            st.header("📊 Thống kê & Phân tích Đề thi")
+            conn = sqlite3.connect('exam_db.sqlite')
+            
+            if role == "core_admin":
+                exams = conn.execute("SELECT id, title, target_class, questions_json FROM mandatory_exams").fetchall()
+            else:
+                classes_str = "', '".join([x.strip() for x in st.session_state.managed.split(',')])
+                exams = conn.execute(f"SELECT id, title, target_class, questions_json FROM mandatory_exams WHERE target_class IN ('{classes_str}') OR target_class='Tất cả các lớp'").fetchall()
+                
+            if not exams:
+                st.info("Chưa có bài thi nào được giao.")
+            else:
+                exam_dict = {f"[{e[2]}] {e[1]}": e for e in exams}
+                sel_exam_name = st.selectbox("📌 Chọn đề thi để xem thống kê:", ["-- Chọn đề thi --"] + list(exam_dict.keys()))
+                
+                if sel_exam_name != "-- Chọn đề thi --":
+                    exam_id, exam_title, target_class, q_json_str = exam_dict[sel_exam_name]
+                    questions = json.loads(q_json_str)
+                    num_questions = len(questions)
+                    
+                    tb1, tb2, tb3 = st.tabs(["📋 Điểm số", "⚠️ Trốn thi", "📉 Phân tích câu hỏi"])
+                    
+                    res_df = pd.read_sql_query("SELECT u.fullname AS 'Họ tên', u.username, u.class_name AS 'Lớp', r.score AS 'Điểm', r.user_answers_json FROM mandatory_results r JOIN users u ON r.username = u.username WHERE r.exam_id = ?", conn, params=(exam_id,))
+                    
+                    with tb1:
+                        if res_df.empty: st.info("Chưa có học sinh nào nộp bài.")
+                        else: st.dataframe(res_df[['Họ tên', 'Lớp', 'Điểm']], use_container_width=True)
+                    
+                    with tb2:
+                        if target_class == "Tất cả các lớp":
+                            if role == "core_admin":
+                                all_st = pd.read_sql_query("SELECT fullname, username, class_name FROM users WHERE role='student'", conn)
+                            else:
+                                classes_str = "', '".join([x.strip() for x in st.session_state.managed.split(',')])
+                                all_st = pd.read_sql_query(f"SELECT fullname, username, class_name FROM users WHERE role='student' AND class_name IN ('{classes_str}')", conn)
+                        else:
+                            all_st = pd.read_sql_query("SELECT fullname, username, class_name FROM users WHERE role='student' AND class_name=?", conn, params=(target_class,))
+                            
+                        if res_df.empty: missing_df = all_st
+                        else:
+                            submitted = res_df['username'].tolist()
+                            missing_df = all_st[~all_st['username'].isin(submitted)]
+                            
+                        if missing_df.empty:
+                            st.success("🎉 Tuyệt vời! 100% học sinh đã hoàn thành bài thi.")
+                        else:
+                            st.warning(f"🚨 Có {len(missing_df)} học sinh chưa làm bài:")
+                            st.dataframe(missing_df[['fullname', 'class_name', 'username']].rename(columns={'fullname':'Họ tên', 'class_name':'Lớp', 'username':'Tài khoản'}), use_container_width=True)
+
+                    with tb3:
+                        if res_df.empty:
+                            st.info("Chưa có dữ liệu để phân tích biểu đồ.")
+                        else:
+                            wrong_counts = {f"Câu {i+1}": 0 for i in range(num_questions)}
+                            for idx, row in res_df.iterrows():
+                                try:
+                                    u_ans = json.loads(row['user_answers_json'])
+                                    for i, q in enumerate(questions):
+                                        correct_char = q['ans'].strip()[0].upper()
+                                        user_choice = u_ans.get(str(i), u_ans.get(i, "")) 
+                                        if not user_choice or not str(user_choice).strip().upper().startswith(correct_char):
+                                            wrong_counts[f"Câu {i+1}"] += 1
+                                except: pass
+                                        
+                            stat_df = pd.DataFrame(list(wrong_counts.items()), columns=['Câu hỏi', 'Số lượt sai'])
+                            st.markdown("**📊 Biểu đồ số lượt chọn SAI theo từng câu:**")
+                            st.bar_chart(stat_df.set_index('Câu hỏi'))
+                            
+                            max_wrong = stat_df['Số lượt sai'].max()
+                            min_wrong = stat_df['Số lượt sai'].min()
+                            
+                            if max_wrong == 0:
+                                st.success("🌟 100% học sinh trả lời đúng tất cả các câu!")
+                            else:
+                                hard_qs = stat_df[stat_df['Số lượt sai'] == max_wrong]['Câu hỏi'].tolist()
+                                easy_qs = stat_df[stat_df['Số lượt sai'] == min_wrong]['Câu hỏi'].tolist()
+                                st.error(f"🚨 **Câu sai nhiều nhất:** {', '.join(hard_qs)} ({max_wrong} lượt sai). Thầy cô cần tập trung ôn tập lại kiến thức phần này.")
+                                st.success(f"🌟 **Câu làm tốt nhất:** {', '.join(easy_qs)} ({min_wrong} lượt sai).")
+            conn.close()
 
         elif choice == "✍️ Kiểm tra bắt buộc":
             st.header("✍️ Kiểm tra bắt buộc")
             conn = sqlite3.connect('exam_db.sqlite')
-            exams = conn.execute("SELECT id, title, questions_json, time_limit FROM mandatory_exams WHERE target_class=?", (st.session_state.class_name,)).fetchall()
-            if not exams: st.info("🎉 Hiện tại bạn không có bài kiểm tra bắt buộc nào!")
+            exams = conn.execute("SELECT id, title, questions_json, time_limit FROM mandatory_exams WHERE target_class=? OR target_class='Tất cả các lớp'", (st.session_state.class_name,)).fetchall()
+            
+            if not exams: st.info("🎉 Hiện tại bạn chưa có bài kiểm tra nào!")
             else:
                 if st.session_state.get('taking_exam') is None:
                     for e_id, e_title, e_json, e_time in exams:
                         c1, c2 = st.columns([3, 1])
-                        c1.write(f"**{e_title}** ({e_time} phút)")
-                        check_done = conn.execute("SELECT score FROM mandatory_results WHERE username=? AND exam_id=?", (st.session_state.current_user, e_id)).fetchone()
-                        if check_done: c2.success(f"Đã thi: {check_done[0]} điểm")
+                        c1.write(f"**{e_title}** (Thời gian: {e_time} phút)")
+                        done = conn.execute("SELECT score FROM mandatory_results WHERE username=? AND exam_id=?", (st.session_state.current_user, e_id)).fetchone()
+                        if done: c2.success(f"Đã nộp: {done[0]} điểm")
                         else:
-                            if c2.button("▶️ VÀO THI", key=f"btn_start_{e_id}"):
+                            if c2.button("▶️ LÀM BÀI", key=f"btn_{e_id}"):
                                 st.session_state.taking_exam = {'id': e_id, 'title': e_title, 'time_limit': e_time, 'questions': json.loads(e_json)}
                                 st.rerun()
                 else: take_exam_ui(st.session_state.taking_exam, st.session_state.taking_exam['id'], True)
@@ -462,38 +546,34 @@ def main():
 
         elif choice == "🚀 Luyện đề tự do":
             st.header("🚀 Luyện đề tự do (AI Sinh đề)")
-            st.info("AI sẽ tổng hợp 40 câu hỏi Vận dụng & VDC hoàn toàn mới bám sát đề thi HSG. Thời gian làm bài 90 phút.")
+            st.info("🤖 AI sẽ mix 40 câu hỏi Vận dụng & Vận dụng cao hoàn toàn mới bám sát đề thi HSG. Thời gian: 90 phút.")
             if st.session_state.get('taking_free_exam') is None:
-                if st.button("🪄 BẤM VÀO ĐÂY ĐỂ AI SINH ĐỀ NGAY", type="primary"):
-                    if not api_key: st.error("❌ Chưa cấu hình API Key!")
+                if st.button("🪄 BẤM ĐỂ AI TẠO ĐỀ & VÀO THI", type="primary"):
+                    if not api_key: st.error("❌ Hệ thống chưa kết nối AI.")
                     else:
-                        with st.spinner("🤖 AI đang biên soạn... Vui lòng đợi trong giây lát."):
-                            free_exam_json = generate_free_practice_ai(api_key)
-                            if free_exam_json:
-                                st.session_state.taking_free_exam = {'title': f"Luyện đề tự do - {datetime.now().strftime('%d/%m/%Y %H:%M')}", 'time_limit': 90, 'questions': free_exam_json}
+                        with st.spinner("🤖 Đang biên soạn 40 câu Toán cực khó... Xin chờ."):
+                            free_exam = generate_free_practice_ai(api_key)
+                            if free_exam:
+                                st.session_state.taking_free_exam = {'title': "Luyện đề Vận Dụng Cao (AI Sinh)", 'time_limit': 90, 'questions': free_exam}
                                 st.rerun()
-                            else: st.error("❌ Máy chủ AI bận!")
+                            else: st.error("❌ Máy chủ AI đang quá tải, vui lòng thử lại sau.")
             else:
                 take_exam_ui(st.session_state.taking_free_exam, 9999, False)
-
-        elif choice == "📊 Bảng điểm":
-            st.header("📊 Bảng điểm học sinh")
-            conn = sqlite3.connect('exam_db.sqlite')
-            if role == "core_admin":
-                res = pd.read_sql_query("SELECT u.fullname AS 'Họ tên', u.class_name AS 'Lớp', e.title AS 'Bài thi', r.score AS 'Điểm' FROM mandatory_results r JOIN users u ON r.username = u.username JOIN mandatory_exams e ON r.exam_id = e.id", conn)
-            else:
-                # Tính năng đồng bộ: Lọc điểm của các lớp mà Admin này quản lý
-                classes = "', '".join([x.strip() for x in st.session_state.managed.split(',')])
-                res = pd.read_sql_query(f"SELECT u.fullname AS 'Họ tên', u.class_name AS 'Lớp', e.title AS 'Bài thi', r.score AS 'Điểm' FROM mandatory_results r JOIN users u ON r.username = u.username JOIN mandatory_exams e ON r.exam_id = e.id WHERE u.class_name IN ('{classes}')", conn)
-            st.dataframe(res, use_container_width=True)
-            conn.close()
+                if st.button("❌ Hủy đề này"):
+                    st.session_state.taking_free_exam = None
+                    st.session_state.show_results = False
+                    st.rerun()
 
         elif choice == "📊 Điểm số cá nhân":
-            st.header("📊 Thành tích của bạn")
+            st.header("📊 Bảng điểm cá nhân")
             conn = sqlite3.connect('exam_db.sqlite')
             res = pd.read_sql_query("SELECT e.title AS 'Tên Bài', r.score AS 'Điểm', r.timestamp AS 'Ngày nộp' FROM mandatory_results r JOIN mandatory_exams e ON r.exam_id = e.id WHERE r.username=?", conn, params=(st.session_state.current_user,))
             st.dataframe(res, use_container_width=True)
             conn.close()
+            
+        elif choice == "🔐 Cá nhân":
+            st.header("🔐 Thông tin cá nhân")
+            st.info(f"Xin chào {st.session_state.fullname}! Mọi thông tin của bạn đang được bảo mật an toàn.")
 
 if __name__ == "__main__":
     main()
