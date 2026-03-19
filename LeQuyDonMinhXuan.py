@@ -22,19 +22,18 @@ ADMIN_CORE_PW = "GiámĐốc2026"
 VN_TZ = timezone(timedelta(hours=7))
 
 # ==========================================
-# 1. TIỆN ÍCH XỬ LÝ USERNAME (GIẢI PHÁP THÔNG THOÁNG)
+# 1. TIỆN ÍCH XỬ LÝ USERNAME (TỰ ĐỘNG ĐÁNH SỐ)
 # ==========================================
 def remove_accents(input_str):
     if not input_str: return ""
     nfkd_form = unicodedata.normalize('NFKD', str(input_str))
     return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).replace(" ", "").lower()
 
-def gen_smart_username(fullname, dob):
+def gen_smart_username(fullname):
     """
-    Quy tắc linh hoạt:
-    1. Base: lqd_tenkhongdau
-    2. Trùng -> Thêm Ngày sinh (nếu có)
-    3. Trống ngày sinh / Vẫn trùng -> Tự động thêm _1, _2...
+    Quy tắc linh hoạt mới:
+    1. Cơ bản: lqd_tenkhongdau
+    2. Nếu trùng -> Tự động thêm số 1, 2, 3... (Bỏ qua ngày sinh)
     """
     base_name = remove_accents(fullname)
     base_user = f"lqd_{base_name}"
@@ -42,27 +41,16 @@ def gen_smart_username(fullname, dob):
     conn = sqlite3.connect('exam_db.sqlite')
     c = conn.cursor()
     
-    # Kịch bản 1: Tài khoản gốc chưa ai dùng
+    # Kiểm tra xem tài khoản gốc đã có chưa
     c.execute("SELECT COUNT(*) FROM users WHERE username=?", (base_user,))
     if c.fetchone()[0] == 0:
         conn.close()
         return base_user
         
-    # Kịch bản 2: Bị trùng (như Dương Tùng Anh & Dương Tùng Ánh)
-    # Thử dùng Ngày sinh nếu có
-    if dob and str(dob).lower() not in ['nan', 'none', '']:
-        suffix = "".join(filter(str.isdigit, str(dob)))
-        dob_user = f"{base_user}{suffix}"
-        c.execute("SELECT COUNT(*) FROM users WHERE username=?", (dob_user,))
-        if c.fetchone()[0] == 0:
-            conn.close()
-            return dob_user
-        base_user = dob_user # Nếu trùng luôn cả ngày sinh, lấy đây làm gốc để chạy số
-        
-    # Kịch bản 3: Không có ngày sinh hoặc xui xẻo trùng toàn tập -> Chạy số thứ tự tự động
+    # Nếu đã trùng, chạy vòng lặp cấp số thứ tự
     counter = 1
     while True:
-        new_user = f"{base_user}_{counter}"
+        new_user = f"{base_user}{counter}"
         c.execute("SELECT COUNT(*) FROM users WHERE username=?", (new_user,))
         if c.fetchone()[0] == 0:
             conn.close()
@@ -192,19 +180,19 @@ def import_student_module():
                     cls = str(r.get('Lớp', '')).strip()
                     sch = str(r.get('Tên trường', '')).strip()
                     
+                    if dob.lower() == 'nan': dob = ""
+                    if sch.lower() == 'nan': sch = ""
+                    
                     if name and name.lower() != 'nan' and cls and cls.lower() != 'nan':
-                        uname = gen_smart_username(name, dob) 
-                        if uname:
-                            try:
-                                conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)",
-                                             (uname, uname, 'student', name, dob, cls, sch))
-                                s += 1
-                            except Exception as e:
-                                f += 1
-                                error_details.append(f"- **Dòng {row_index}:** Lỗi hệ thống ({str(e)}).")
-                        else: 
+                        # Gọi hàm sinh username mới (Chỉ cần truyền Tên)
+                        uname = gen_smart_username(name) 
+                        try:
+                            conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)",
+                                         (uname, uname, 'student', name, dob, cls, sch))
+                            s += 1
+                        except Exception as e:
                             f += 1
-                            error_details.append(f"- **Dòng {row_index}:** Lỗi không thể tạo Username.")
+                            error_details.append(f"- **Dòng {row_index}:** Lỗi hệ thống ({str(e)}).")
                     else: 
                         f += 1
                         error_details.append(f"- **Dòng {row_index}:** Bỏ trống Họ Tên hoặc Lớp.")
@@ -213,10 +201,10 @@ def import_student_module():
                 conn.close()
                 
                 if f == 0:
-                    st.success(f"✅ Tuyệt vời! Hệ thống đã tạo thành công toàn bộ {s} tài khoản học sinh. Nếu có trùng tên, hệ thống đã tự động thêm số thứ tự để tránh xung đột.")
+                    st.success(f"✅ Tuyệt vời! Hệ thống đã tạo thành công toàn bộ {s} tài khoản học sinh. Những tài khoản trùng lặp đã tự động được thêm số!")
                 else:
                     st.success(f"✅ Tạo thành công: {s} tài khoản.")
-                    st.error(f"❌ Bỏ qua: {f} dòng bị lỗi (Thiếu họ tên/Lớp). Vui lòng xem chi tiết bên dưới:")
+                    st.error(f"❌ Bỏ qua: {f} dòng bị lỗi. Vui lòng xem chi tiết bên dưới:")
                     with st.expander("🔍 Xem chi tiết lỗi từng dòng", expanded=True):
                         for err in error_details: st.markdown(err)
             
@@ -231,7 +219,8 @@ def import_student_module():
                 if not n or not c:
                     st.error("Vui lòng điền đủ Họ tên và Lớp!")
                 else:
-                    u = gen_smart_username(n, d)
+                    # Chạy hàm mới bỏ qua Ngày sinh
+                    u = gen_smart_username(n)
                     if u:
                         conn = sqlite3.connect('exam_db.sqlite')
                         try:
@@ -241,8 +230,6 @@ def import_student_module():
                         except sqlite3.IntegrityError:
                             st.error("Lỗi: Tài khoản này đã tồn tại!")
                         conn.close()
-                    else: 
-                        st.error("❌ Lỗi hệ thống khi tạo tài khoản.")
 
 # --- MODULE XÓA LỚP HỌC ĐỒNG BỘ (CHỈ DÀNH CHO ADMIN LÕI) ---
 def delete_class_module(all_classes):
