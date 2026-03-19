@@ -7,6 +7,7 @@ import json
 import time
 import unicodedata
 import random
+import re
 from io import BytesIO
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,7 +21,7 @@ ADMIN_CORE_PW = "GiámĐốc2026"
 VN_TZ = timezone(timedelta(hours=7))
 
 # ==========================================
-# 1. TIỆN ÍCH XỬ LÝ USERNAME & CHUỖI AI
+# 1. TIỆN ÍCH XỬ LÝ USERNAME & ĐỊNH DẠNG AI
 # ==========================================
 def remove_accents(input_str):
     if not input_str: return ""
@@ -38,7 +39,6 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
-    """Dọn dẹp chuỗi JSON an toàn chống lỗi Cú pháp và Markdown"""
     res = json_str.strip()
     md_json = "```json"
     md_code = "```"
@@ -46,6 +46,15 @@ def clean_ai_json(json_str):
     if res.startswith(md_code): res = res[3:]
     if res.endswith(md_code): res = res[:-3]
     return res.strip()
+
+def format_math(text):
+    """Máy sấy công thức: Sửa lỗi hiển thị LaTeX từ AI"""
+    if not isinstance(text, str): return str(text)
+    # Tự động chuyển đổi markdown code chứa dấu \ thành LaTeX inline $...$
+    text = re.sub(r'`([^`]*\\[a-zA-Z]+[^`]*)`', r'$\1$', text)
+    # Triệt tiêu dấu gạch kép để Streamlit render đúng Toán học
+    text = text.replace('\\\\', '\\')
+    return text
 
 def get_api_key():
     conn = sqlite3.connect('exam_db.sqlite')
@@ -200,7 +209,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (HYBRID MATRIX & BẮT LỖI)
+# 4. MODULE AI KHẢO THÍ (HYBRID MATRIX & CẤM BACKTICK)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -225,7 +234,7 @@ def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Bạn là một giáo viên chuyên Toán cấp 2. Nhiệm vụ của bạn là đọc văn bản trích xuất từ đề thi PDF dưới đây, biên tập lại thành chuẩn đúng 40 câu hỏi trắc nghiệm.
     YÊU CẦU BẮT BUỘC:
     1. Trả về mảng JSON array chứa các object có cấu trúc: [{{"q": "Đề", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "ans": "A", "exp": "Hướng dẫn giải..."}}]
-    2. LƯU Ý KỸ THUẬT: Mọi dấu gạch chéo ngược (backslash) của LaTeX PHẢI được nhân đôi (escape). Ví dụ: viết \\\\frac thay vì \\frac. Bọc công thức trong $ hoặc $$.
+    2. LƯU Ý KỸ THUẬT QUAN TRỌNG: TUYỆT ĐỐI KHÔNG dùng dấu backtick (`) để bọc công thức Toán. BẮT BUỘC bọc công thức bằng dấu $ hoặc $$. Mọi dấu gạch chéo ngược (backslash) của LaTeX PHẢI được nhân đôi.
     VĂN BẢN ĐỀ THI:
     {raw_text}
     """
@@ -256,37 +265,26 @@ def generate_free_practice_hybrid(api_key):
         if app_qs:
             app_context = "\n".join([f"- {q['q'][:100]}..." for q in app_qs])
         
-        prompt = f"""Bạn là chuyên gia bồi dưỡng học sinh giỏi Toán lớp 9. Tôi đang tạo một đề thi 40 câu theo chuẩn ma trận Toán THCS (Đại số, Hình học, Số học).
+        prompt = f"""Bạn là chuyên gia bồi dưỡng học sinh giỏi Toán lớp 9. Tôi đang tạo một đề thi 40 câu theo chuẩn ma trận Toán THCS.
         Hệ thống đã chọn sẵn {num_app_qs} câu hỏi có nội dung như sau:
         {app_context}
 
-        NHIỆM VỤ: 
-        Hãy sáng tác thêm ĐÚNG {num_ai_qs} câu hỏi trắc nghiệm (Mức Vận dụng & VDC) để HOÀN THIỆN ma trận.
-        YÊU CẦU TỐI THƯỢNG: KHÔNG lặp lại dạng toán của {num_app_qs} câu đã có ở trên. 40 câu phải hoàn toàn khác biệt.
-        
+        NHIỆM VỤ: Sáng tác thêm ĐÚNG {num_ai_qs} câu hỏi trắc nghiệm (Mức Vận dụng & VDC) để HOÀN THIỆN ma trận. TUYỆT ĐỐI KHÔNG lặp lại dạng toán ở trên.
         ĐỊNH DẠNG BẮT BUỘC: 
-        - Trả về mảng JSON: [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn..."}}]. 
-        - TRONG JSON NÀY, TẤT CẢ công thức Toán LaTeX PHẢI được escape dấu gạch chéo (ví dụ: \\\\frac{{1}}{{2}}). Bọc công thức trong dấu $ hoặc $$.
+        - Trả về JSON: [{{"q": "Câu", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "Giải..."}}]. 
+        - LƯU Ý: KHÔNG dùng dấu backtick (`) cho công thức. BẮT BUỘC bọc công thức trong $ hoặc $$. Escape backslash (\\\\frac).
         """
         ai_res = safe_ai_generate(prompt, api_key)
         
-        if isinstance(ai_res, list):
-            ai_qs = ai_res
-        else:
-            return ai_res 
+        if isinstance(ai_res, list): ai_qs = ai_res
+        else: return ai_res 
             
     combined_qs = app_qs + ai_qs
     random.shuffle(combined_qs)
     return combined_qs[:40]
 
 # ==========================================
-# 5. TIỆN ÍCH HIỂN THỊ CÔNG THỨC TOÁN
-# ==========================================
-def render_exam_content(text):
-    st.write(text)
-
-# ==========================================
-# 6. GIAO DIỆN HỌC SINH (LÀM BÀI VÀ CHỐNG LỖI HIỂN THỊ)
+# 5. GIAO DIỆN HỌC SINH (LÀM BÀI & KẾT QUẢ ĐÃ FIX LATEX)
 # ==========================================
 def take_exam_ui(exam_data, exam_id, is_mandatory=True):
     st.markdown(f"### 📝 {exam_data.get('title', 'Luyện đề tự do')}")
@@ -326,8 +324,11 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True):
         with st.form(f"exam_form_{exam_id}"):
             for i, q in enumerate(questions):
                 st.markdown(f"**Câu {i+1}:**")
-                render_exam_content(q['q'])
-                st.session_state.student_answers[i] = st.radio("Chọn đáp án:", q['options'], index=None, key=f"q_{i}")
+                # Áp dụng bộ lọc LaTeX cho Đề bài
+                st.markdown(format_math(q['q']))
+                # Áp dụng bộ lọc LaTeX cho Đáp án
+                formatted_options = [format_math(opt) for opt in q['options']]
+                st.session_state.student_answers[i] = st.radio("Chọn đáp án:", formatted_options, index=None, key=f"q_{i}")
                 st.divider()
             
             if st.form_submit_button("✅ NỘP BÀI / KẾT THÚC"):
@@ -351,7 +352,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True):
                 st.rerun()
                 
     else:
-        # --- CƠ CHẾ TÍNH TOÁN REAL-TIME ĐỂ CHỐNG LỖI ATTRIBUTE ERROR ---
+        # Tính toán real-time
         correct_count = 0
         for i, q in enumerate(questions):
             correct_char = q['ans'].strip()[0].upper()
@@ -360,7 +361,6 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True):
                 correct_count += 1
                 
         st.success("🎉 **BẠN ĐÃ HOÀN THÀNH BÀI THI!**")
-        
         col1, col2 = st.columns(2)
         col1.metric("📌 TỔNG ĐIỂM", f"{st.session_state.get('score', 0)} / 10")
         col2.metric("🎯 SỐ CÂU ĐÚNG", f"{correct_count} / {len(questions)}")
@@ -378,11 +378,12 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True):
             icon = "✅ ĐÚNG" if is_correct else "❌ SAI"
             
             with st.expander(f"Câu {i+1}: {icon} | Đáp án chuẩn: {q['ans']}"):
-                render_exam_content(q['q'])
-                st.markdown(f"**Bạn đã chọn:** `{usr_choice if usr_choice else 'Không chọn'}`")
+                # Hiển thị mượt mà không backtick
+                st.markdown(format_math(q['q']))
+                st.markdown(f"**Bạn đã chọn:** {usr_choice if usr_choice else 'Không chọn'}")
                 if not is_correct:
                     st.error("Câu trả lời chưa chính xác.")
-                st.info(f"**Hướng dẫn (Brief Solution):**\n{q.get('exp', 'Đang cập nhật...')}")
+                st.info(f"**Hướng dẫn (Brief Solution):**\n{format_math(q.get('exp', 'Đang cập nhật...'))}")
                 
         if st.button("⬅️ Trở về danh sách đề"):
             st.session_state.show_results = False
@@ -392,7 +393,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True):
             st.rerun()
 
 # ==========================================
-# 7. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH
+# 6. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH
 # ==========================================
 def main():
     st.set_page_config(page_title="LMS Lê Quý Đôn V200", layout="wide")
@@ -510,9 +511,9 @@ def main():
                     data = st.session_state.temp_exam_data
                     for i, q in enumerate(data['questions']):
                         with st.expander(f"Câu {i+1} - Đáp án: {q['ans']}"):
-                            render_exam_content(q['q'])
-                            for opt in q['options']: render_exam_content(opt)
-                            st.success(f"**Hướng dẫn:**\n{q.get('exp', '')}") 
+                            st.markdown(format_math(q['q']))
+                            for opt in q['options']: st.markdown(format_math(opt))
+                            st.success(f"**Hướng dẫn:**\n{format_math(q.get('exp', ''))}") 
 
                     c1, c2 = st.columns(2)
                     if c1.button("💾 CHÍNH THỨC GIAO ĐỀ", type="primary"):
