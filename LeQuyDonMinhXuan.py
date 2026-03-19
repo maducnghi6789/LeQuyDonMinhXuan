@@ -86,6 +86,8 @@ def account_manager_ui(target_role, specific_class=None):
     st.markdown(f"#### 🛠️ Quản lý danh sách {target_role}")
     conn = sqlite3.connect('exam_db.sqlite')
     query = f"SELECT * FROM users WHERE role='{target_role}'"
+    
+    # Đồng bộ hóa: Bộ lọc lớp hiển thị chính xác theo yêu cầu
     if specific_class and specific_class != "Tất cả các lớp":
         query += f" AND class_name='{specific_class}'"
     
@@ -93,6 +95,8 @@ def account_manager_ui(target_role, specific_class=None):
     if not df.empty:
         cols = ['username', 'fullname', 'password', 'class_name']
         if 'school' in df.columns: cols.append('school')
+        if 'managed_classes' in df.columns and target_role == 'sub_admin': cols.append('managed_classes')
+        
         st.dataframe(df[cols], use_container_width=True)
         
         sel_u = st.selectbox(f"Chọn {target_role} để xử lý:", ["-- Chọn --"] + df['username'].tolist(), key=f"sel_{target_role}_{specific_class}")
@@ -105,11 +109,19 @@ def account_manager_ui(target_role, specific_class=None):
                 f_cls = c1.text_input("Lớp", value=u_data['class_name'] if u_data['class_name'] else "")
                 f_sch = c2.text_input("Trường", value=u_data.get('school', '') if pd.notna(u_data.get('school')) else "")
                 
+                # Chỉ hiển thị quyền quản lý nếu là Admin thành viên
+                f_man = st.text_input("Quyền quản lý (Dành cho Admin thành viên)", value=u_data.get('managed_classes', '') if pd.notna(u_data.get('managed_classes')) else "") if target_role == 'sub_admin' else ""
+                
                 b_up, b_del = st.columns(2)
                 if b_up.form_submit_button("💾 CẬP NHẬT ĐỒNG BỘ"):
-                    conn.execute("UPDATE users SET fullname=?, password=?, class_name=?, school=? WHERE username=?", 
-                                 (f_name, f_pass, f_cls, f_sch, sel_u))
+                    if target_role == 'sub_admin':
+                        conn.execute("UPDATE users SET fullname=?, password=?, class_name=?, school=?, managed_classes=? WHERE username=?", 
+                                     (f_name, f_pass, f_cls, f_sch, f_man, sel_u))
+                    else:
+                        conn.execute("UPDATE users SET fullname=?, password=?, class_name=?, school=? WHERE username=?", 
+                                     (f_name, f_pass, f_cls, f_sch, sel_u))
                     conn.commit(); st.success("✅ Đã cập nhật!"); time.sleep(0.5); st.rerun()
+                
                 if b_del.form_submit_button("🗑️ XÓA TÀI KHOẢN"):
                     log_deletion(st.session_state.current_user, "Tài khoản", sel_u, "Xóa thủ công từ bảng quản lý")
                     conn.execute("DELETE FROM users WHERE username=?", (sel_u,))
@@ -237,18 +249,31 @@ def main():
             choice = st.radio("Menu chính", menu)
             if st.button("🚪 Thoát", use_container_width=True): st.session_state.clear(); st.rerun()
 
-        # --- LOGIC ĐIỀU HƯỚNG ---
+        # --- LOGIC ĐỒNG BỘ DANH SÁCH LỚP (UPDATE QUAN TRỌNG) ---
         conn = sqlite3.connect('exam_db.sqlite')
-        all_cl = [r[0] for r in conn.execute("SELECT DISTINCT class_name FROM users WHERE role='student' AND class_name IS NOT NULL").fetchall()]
+        
+        # 1. Lấy danh sách lớp đã có học sinh
+        c_stu = conn.execute("SELECT DISTINCT class_name FROM users WHERE role='student' AND class_name IS NOT NULL AND class_name != ''").fetchall()
+        stu_classes = [r[0].strip() for r in c_stu]
+        
+        # 2. Lấy danh sách lớp đã được GIAO CHO Admin thành viên (VD: 9A, 9E)
+        c_man = conn.execute("SELECT managed_classes FROM users WHERE role='sub_admin' AND managed_classes IS NOT NULL").fetchall()
+        man_classes = []
+        for r in c_man:
+            man_classes.extend([x.strip() for x in r[0].split(',') if x.strip()])
+            
+        # 3. ĐỒNG BỘ HÓA: Hợp nhất tất cả các lớp vào một danh sách duy nhất
+        all_cl = sorted(list(set(stu_classes + man_classes)))
         conn.close()
 
+        # --- ĐIỀU HƯỚNG ---
         if choice == "🛡️ Quản trị tối cao":
             st.header("🛡️ Quản trị tối cao (Admin Lõi)")
             t1, t2, t3, t4 = st.tabs(["👥 Admin thành viên", "🎓 Giám sát Học sinh", "📥 Nhập dữ liệu HS", "🚨 Xóa lớp học"])
             with t1:
                 with st.form("add_sa"):
                     u_s, p_s = st.text_input("Username Admin TV"), st.text_input("Mật khẩu")
-                    n_s, m_s = st.text_input("Họ tên"), st.text_input("Lớp/Vùng quản lý")
+                    n_s, m_s = st.text_input("Họ tên"), st.text_input("Lớp/Vùng quản lý (VD: 9A, 9E)")
                     if st.form_submit_button("✅ Cấp quyền Admin TV"):
                         conn = sqlite3.connect('exam_db.sqlite')
                         conn.execute("INSERT INTO users (username, password, role, fullname, managed_classes) VALUES (?,?,'sub_admin',?,?)", (u_s, p_s, n_s, m_s))
@@ -256,7 +281,8 @@ def main():
                 st.divider()
                 account_manager_ui("sub_admin")
             with t2:
-                sel_cl = st.selectbox("📌 Xem theo lớp:", ["Tất cả các lớp"] + all_cl)
+                # Danh sách lớp đã được đồng bộ 100% (hiển thị cả 9A, 9E dù chưa có học sinh)
+                sel_cl = st.selectbox("📌 Xem học sinh theo lớp đã giao/tồn tại:", ["Tất cả các lớp"] + all_cl)
                 account_manager_ui("student", specific_class=sel_cl)
             with t3: import_student_module()
             with t4: delete_class_module(all_cl)
@@ -265,7 +291,12 @@ def main():
             st.header("👥 Quản lý khu vực (Admin Thành viên)")
             my_classes = [x.strip() for x in st.session_state.managed.split(',')] if st.session_state.managed else []
             t1, t2, t3 = st.tabs(["🎓 Danh sách học sinh", "📥 Nhập dữ liệu HS", "🚨 Xóa lớp quản lý"])
-            with t1: account_manager_ui("student", specific_class="Tất cả các lớp")
+            with t1: 
+                # Bộ lọc chỉ hiển thị các lớp mà Admin này quản lý
+                sel_my_cl = st.selectbox("📌 Xem học sinh theo lớp:", ["Tất cả các lớp"] + my_classes)
+                # Lọc ra danh sách học sinh nếu chọn "Tất cả các lớp" thì gộp chuỗi các lớp quản lý
+                filter_class = sel_my_cl if sel_my_cl != "Tất cả các lớp" else st.session_state.managed
+                account_manager_ui("student", specific_class=filter_class)
             with t2: import_student_module()
             with t3: delete_class_module(my_classes)
 
