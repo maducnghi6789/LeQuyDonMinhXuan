@@ -30,7 +30,7 @@ def remove_accents(input_str):
     return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).replace(" ", "").lower()
 
 def gen_smart_username(fullname, existing_usernames):
-    """Tạo username lqd_ + tên không dấu, tự động đánh số nếu trùng trong bộ nhớ đệm"""
+    """Tạo username lqd_ + tên không dấu, tự động đánh số nếu trùng"""
     base_name = remove_accents(fullname)
     base_user = f"lqd_{base_name}"
     
@@ -45,41 +45,39 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 # ==========================================
-# 2. HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU & NHẬT KÝ
+# 2. HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU "SIÊU PHÒNG VỆ"
 # ==========================================
 def init_db():
     conn = sqlite3.connect('exam_db.sqlite')
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users (
-        username TEXT PRIMARY KEY, password TEXT, role TEXT, 
-        fullname TEXT, dob TEXT, class_name TEXT, 
-        school TEXT, managed_classes TEXT)''')
+    # 1. Khởi tạo bảng cơ sở
+    c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY)''')
     
-    try: c.execute("ALTER TABLE users ADD COLUMN school TEXT")
-    except: pass
-    try: c.execute("ALTER TABLE users ADD COLUMN managed_classes TEXT")
-    except: pass
-    
+    # 2. Cập nhật cấu trúc bảng từng bước (Tránh OperationalError)
+    columns = [
+        ("password", "TEXT"), ("role", "TEXT"), ("fullname", "TEXT"),
+        ("dob", "TEXT"), ("class_name", "TEXT"), ("school", "TEXT"),
+        ("managed_classes", "TEXT")
+    ]
+    for col_name, col_type in columns:
+        try:
+            c.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+        except:
+            pass # Cột đã tồn tại
+            
+    # 3. Khởi tạo các bảng phụ trợ
     c.execute('''CREATE TABLE IF NOT EXISTS system_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS mandatory_exams (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, questions_json TEXT, start_time TEXT, end_time TEXT, target_class TEXT, file_data TEXT, file_type TEXT, answer_key TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS mandatory_results (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, exam_id INTEGER, score REAL, user_answers_json TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
     c.execute('''CREATE TABLE IF NOT EXISTS deletion_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, deleted_by TEXT, entity_type TEXT, entity_name TEXT, reason TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
     
+    # 4. Đăng ký Admin Lõi
     c.execute("INSERT OR IGNORE INTO users (username, password, role, fullname) VALUES (?, ?, 'core_admin', 'Giám Đốc Hệ Thống')", (ADMIN_CORE_EMAIL, ADMIN_CORE_PW))
     conn.commit(); conn.close()
 
 def log_deletion(deleted_by, entity_type, entity_name, reason):
-    """Sửa lỗi OperationalError bằng cách ép tạo bảng tại chỗ"""
     conn = sqlite3.connect('exam_db.sqlite')
-    # Ép tạo bảng ngay tại đây để đảm bảo tuyệt đối không bị lỗi thiếu bảng
-    conn.execute('''CREATE TABLE IF NOT EXISTS deletion_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, 
-        deleted_by TEXT, 
-        entity_type TEXT, 
-        entity_name TEXT, 
-        reason TEXT, 
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-    
+    conn.execute('''CREATE TABLE IF NOT EXISTS deletion_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, deleted_by TEXT, entity_type TEXT, entity_name TEXT, reason TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
     vn_time = datetime.now(VN_TZ).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute("INSERT INTO deletion_logs (deleted_by, entity_type, entity_name, reason, timestamp) VALUES (?, ?, ?, ?, ?)", 
                  (deleted_by, entity_type, entity_name, reason, vn_time))
@@ -92,7 +90,7 @@ def get_api_key():
     return res[0] if res else ""
 
 # ==========================================
-# 3. MODULE TÁC VỤ (GIỮ NGUYÊN BẢN V100)
+# 3. MODULE TÁC VỤ (QUẢN LÝ, NHẬP LIỆU)
 # ==========================================
 def account_manager_ui(target_role, specific_class=None):
     st.markdown(f"#### 🛠️ Quản lý danh sách {target_role}")
@@ -216,7 +214,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. GIAO DIỆN CHÍNH (GIỮ NGUYÊN BẢN V100)
+# 4. GIAO DIỆN CHÍNH
 # ==========================================
 def main():
     st.set_page_config(page_title="LMS Lê Quý Đôn V100 Supreme", layout="wide")
