@@ -150,7 +150,7 @@ def account_manager_ui(target_role, specific_class=None):
         st.info("Chưa có dữ liệu.")
     conn.close()
 
-# --- MODULE TẠO TÀI KHOẢN & NHẬP DỮ LIỆU ĐÃ NÂNG CẤP ---
+# --- MODULE TẠO TÀI KHOẢN & NHẬP DỮ LIỆU ĐÃ NÂNG CẤP THÔNG MINH ---
 def import_student_module():
     st.markdown("### 📥 Nhập dữ liệu & Tạo tài khoản Học sinh")
     t1, t2 = st.tabs(["📁 Nạp File Excel", "✍️ Nhập thủ công"])
@@ -159,15 +159,31 @@ def import_student_module():
         df_sample.loc[0] = ["Nguyễn Văn An", "15/08/2010", "9A1", "Lê Quý Đôn"]
         out = BytesIO()
         with pd.ExcelWriter(out, engine='openpyxl') as w: df_sample.to_excel(w, index=False)
-        st.download_button("⬇️ Tải file mẫu", out.getvalue(), "Mau_Hoc_Sinh.xlsx")
+        st.download_button("⬇️ Tải file mẫu chuẩn", out.getvalue(), "Mau_Hoc_Sinh.xlsx")
         
-        up = st.file_uploader("Nạp Excel", type="xlsx")
+        up = st.file_uploader("Nạp file Excel (Hỗ trợ nhận diện tự động cột)", type="xlsx")
         if up and st.button("🚀 Nạp dữ liệu"):
             df = pd.read_excel(up)
-            df.columns = df.columns.str.strip() 
             
-            if not all(col in df.columns for col in ["Họ và tên", "Lớp"]):
-                st.error("❌ File Excel không hợp lệ. Vui lòng sử dụng File Mẫu!")
+            # --- ĐỘNG CƠ NHẬN DIỆN CỘT THÔNG MINH (Bất chấp khoảng trắng, in hoa, in thường) ---
+            col_mapping = {}
+            for col in df.columns:
+                norm_col = remove_accents(str(col)).replace(" ", "").lower()
+                if "hovaten" in norm_col or "hoten" in norm_col:
+                    col_mapping[col] = "Họ và tên"
+                elif "lop" in norm_col:
+                    col_mapping[col] = "Lớp"
+                elif "ngaysinh" in norm_col:
+                    col_mapping[col] = "Ngày sinh"
+                elif "truong" in norm_col:
+                    col_mapping[col] = "Tên trường"
+            
+            # Đổi tên cột về chuẩn để code bên dưới luôn chạy đúng
+            df = df.rename(columns=col_mapping)
+            
+            # Kiểm tra xem có đủ 2 cột cốt lõi không
+            if "Họ và tên" not in df.columns or "Lớp" not in df.columns:
+                st.error("❌ File Excel thiếu cột 'Họ và tên' hoặc 'Lớp'. Vui lòng kiểm tra lại file!")
             else:
                 conn = sqlite3.connect('exam_db.sqlite')
                 s, f = 0, 0
@@ -184,7 +200,6 @@ def import_student_module():
                     if sch.lower() == 'nan': sch = ""
                     
                     if name and name.lower() != 'nan' and cls and cls.lower() != 'nan':
-                        # Gọi hàm sinh username mới (Chỉ cần truyền Tên)
                         uname = gen_smart_username(name) 
                         try:
                             conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)",
@@ -195,13 +210,13 @@ def import_student_module():
                             error_details.append(f"- **Dòng {row_index}:** Lỗi hệ thống ({str(e)}).")
                     else: 
                         f += 1
-                        error_details.append(f"- **Dòng {row_index}:** Bỏ trống Họ Tên hoặc Lớp.")
+                        error_details.append(f"- **Dòng {row_index}:** Bỏ trống thông tin Họ Tên hoặc Lớp.")
                 
                 conn.commit()
                 conn.close()
                 
                 if f == 0:
-                    st.success(f"✅ Tuyệt vời! Hệ thống đã tạo thành công toàn bộ {s} tài khoản học sinh. Những tài khoản trùng lặp đã tự động được thêm số!")
+                    st.success(f"✅ Tuyệt vời! Hệ thống đã nạp và tạo thành công toàn bộ {s} tài khoản. (Những tài khoản trùng lặp đã tự động được thêm số thứ tự đằng sau để chống xung đột)")
                 else:
                     st.success(f"✅ Tạo thành công: {s} tài khoản.")
                     st.error(f"❌ Bỏ qua: {f} dòng bị lỗi. Vui lòng xem chi tiết bên dưới:")
@@ -219,7 +234,6 @@ def import_student_module():
                 if not n or not c:
                     st.error("Vui lòng điền đủ Họ tên và Lớp!")
                 else:
-                    # Chạy hàm mới bỏ qua Ngày sinh
                     u = gen_smart_username(n)
                     if u:
                         conn = sqlite3.connect('exam_db.sqlite')
