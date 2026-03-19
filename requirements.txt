@@ -1,6 +1,7 @@
+streamlit
+google-generativeai
 matplotlib
 numpy
 pandas
-google-generativeai
 openpyxl
 PyPDF2
