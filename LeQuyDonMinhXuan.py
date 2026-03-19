@@ -29,16 +29,34 @@ def remove_accents(input_str):
     nfkd_form = unicodedata.normalize('NFKD', str(input_str))
     return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).replace(" ", "").lower()
 
-def gen_smart_username(fullname, dob, class_name):
+def gen_smart_username(fullname, dob):
+    """Tạo username dạng lqd_tenkhongdau. Kiểm tra trùng trên toàn hệ thống."""
     base_name = remove_accents(fullname)
     base_user = f"lqd_{base_name}"
+    
     conn = sqlite3.connect('exam_db.sqlite')
-    count = conn.execute("SELECT COUNT(*) FROM users WHERE username=? AND class_name=?", (base_user, class_name)).fetchone()[0]
-    conn.close()
+    # Username là khóa chính duy nhất toàn hệ thống
+    count = conn.execute("SELECT COUNT(*) FROM users WHERE username=?", (base_user,)).fetchone()[0]
+    
     if count > 0:
-        if not dob or str(dob).lower() in ['nan', 'none', '']: return None
+        # Nếu đã có người mang username này, BẮT BUỘC cần ngày sinh
+        if not dob or str(dob).lower() in ['nan', 'none', '']: 
+            conn.close()
+            return None # Trả về None để hệ thống báo lỗi cần ngày sinh
+        
         suffix = "".join(filter(str.isdigit, str(dob)))
-        return f"{base_user}{suffix}"
+        new_user = f"{base_user}{suffix}"
+        
+        # Kiểm tra xem có ai trùng luôn cả ngày sinh không
+        count_dob = conn.execute("SELECT COUNT(*) FROM users WHERE username=?", (new_user,)).fetchone()[0]
+        conn.close()
+        
+        if count_dob > 0:
+            # Nếu xui xẻo trùng cả họ tên và ngày sinh, cấp thêm 2 số ngẫu nhiên
+            return f"{new_user}{random.randint(10,99)}"
+        return new_user
+    
+    conn.close()
     return base_user
 
 # ==========================================
@@ -87,7 +105,6 @@ def account_manager_ui(target_role, specific_class=None):
     conn = sqlite3.connect('exam_db.sqlite')
     query = f"SELECT * FROM users WHERE role='{target_role}'"
     
-    # Đồng bộ hóa: Bộ lọc lớp hiển thị chính xác theo yêu cầu
     if specific_class and specific_class != "Tất cả các lớp":
         query += f" AND class_name='{specific_class}'"
     
@@ -109,7 +126,6 @@ def account_manager_ui(target_role, specific_class=None):
                 f_cls = c1.text_input("Lớp", value=u_data['class_name'] if u_data['class_name'] else "")
                 f_sch = c2.text_input("Trường", value=u_data.get('school', '') if pd.notna(u_data.get('school')) else "")
                 
-                # Chỉ hiển thị quyền quản lý nếu là Admin thành viên
                 f_man = st.text_input("Quyền quản lý (Dành cho Admin thành viên)", value=u_data.get('managed_classes', '') if pd.notna(u_data.get('managed_classes')) else "") if target_role == 'sub_admin' else ""
                 
                 b_up, b_del = st.columns(2)
@@ -137,7 +153,7 @@ def account_manager_ui(target_role, specific_class=None):
         st.info("Chưa có dữ liệu.")
     conn.close()
 
-# --- MODULE TẠO TÀI KHOẢN & NHẬP DỮ LIỆU ---
+# --- MODULE TẠO TÀI KHOẢN & NHẬP DỮ LIỆU ĐÃ NÂNG CẤP ---
 def import_student_module():
     st.markdown("### 📥 Nhập dữ liệu & Tạo tài khoản Học sinh")
     t1, t2 = st.tabs(["📁 Nạp File Excel", "✍️ Nhập thủ công"])
@@ -151,51 +167,77 @@ def import_student_module():
         up = st.file_uploader("Nạp Excel", type="xlsx")
         if up and st.button("🚀 Nạp dữ liệu"):
             df = pd.read_excel(up)
-            conn = sqlite3.connect('exam_db.sqlite')
-            s, f = 0, 0
-            for _, r in df.iterrows():
-                name = str(r.get('Họ và tên', ''))
-                dob = str(r.get('Ngày sinh', ''))
-                cls = str(r.get('Lớp', ''))
-                sch = str(r.get('Tên trường', ''))
+            df.columns = df.columns.str.strip() # Dọn dẹp khoảng trắng ở tên cột
+            
+            if not all(col in df.columns for col in ["Họ và tên", "Lớp"]):
+                st.error("❌ File Excel không hợp lệ. Vui lòng sử dụng File Mẫu!")
+            else:
+                conn = sqlite3.connect('exam_db.sqlite')
+                s, f = 0, 0
+                error_details = []
                 
-                if name and name.lower() != 'nan' and cls and cls.lower() != 'nan':
-                    uname = gen_smart_username(name, dob, cls)
-                    if uname:
-                        try:
-                            conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)",
-                                         (uname, uname, 'student', name, dob, cls, sch))
-                            s += 1
-                        except: f += 1
-                    else: f += 1
-                else: f += 1
-            conn.commit()
-            conn.close()
-            st.success(f"✅ Tạo thành công: {s} tài khoản | ❌ Thất bại: {f} (Trùng tên thiếu ngày sinh hoặc thiếu dữ liệu)")
+                for idx, r in df.iterrows():
+                    row_index = idx + 2 # Chỉ rõ dòng trong file Excel
+                    name = str(r.get('Họ và tên', '')).strip()
+                    dob = str(r.get('Ngày sinh', '')).strip()
+                    cls = str(r.get('Lớp', '')).strip()
+                    sch = str(r.get('Tên trường', '')).strip()
+                    
+                    if name and name.lower() != 'nan' and cls and cls.lower() != 'nan':
+                        uname = gen_smart_username(name, dob) # Gọi hàm sinh username mới
+                        if uname:
+                            try:
+                                conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)",
+                                             (uname, uname, 'student', name, dob, cls, sch))
+                                s += 1
+                            except sqlite3.IntegrityError:
+                                f += 1
+                                error_details.append(f"- **Dòng {row_index}:** Tài khoản `{uname}` đã tồn tại.")
+                            except Exception as e:
+                                f += 1
+                                error_details.append(f"- **Dòng {row_index}:** Lỗi hệ thống ({str(e)}).")
+                        else: 
+                            f += 1
+                            error_details.append(f"- **Dòng {row_index}:** Học sinh '{name}' bị trùng tên trên hệ thống. **Bắt buộc nhập Ngày sinh**.")
+                    else: 
+                        f += 1
+                        error_details.append(f"- **Dòng {row_index}:** Bỏ trống Họ Tên hoặc Lớp.")
+                
+                conn.commit()
+                conn.close()
+                
+                if f == 0:
+                    st.success(f"✅ Tạo thành công toàn bộ {s} tài khoản!")
+                else:
+                    st.success(f"✅ Tạo thành công: {s} tài khoản.")
+                    st.error(f"❌ Thất bại: {f} tài khoản. Vui lòng xem chi tiết bên dưới:")
+                    with st.expander("🔍 Nhấn vào đây để xem chi tiết lỗi từng dòng trong File Excel", expanded=True):
+                        for err in error_details:
+                            st.markdown(err)
             
     with t2:
         with st.form("manual_add_st"):
             c1, c2 = st.columns(2)
             n = c1.text_input("Họ và Tên (Bắt buộc)")
             c = c2.text_input("Lớp (Bắt buộc)")
-            d = c1.text_input("Ngày sinh (Bắt buộc nếu trùng)")
+            d = c1.text_input("Ngày sinh (Chỉ bắt buộc nếu trùng tên)")
             sch = c2.text_input("Trường")
             if st.form_submit_button("✅ Tạo tài khoản học sinh"):
                 if not n or not c:
                     st.error("Vui lòng điền đủ Họ tên và Lớp!")
                 else:
-                    u = gen_smart_username(n, d, c)
+                    u = gen_smart_username(n, d)
                     if u:
                         conn = sqlite3.connect('exam_db.sqlite')
                         try:
                             conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)", (u, u, 'student', n, d, c, sch))
                             conn.commit()
                             st.success(f"✅ Đã tạo tài khoản: {u}")
-                        except:
-                            st.error("Lỗi: Tài khoản đã tồn tại!")
+                        except sqlite3.IntegrityError:
+                            st.error("Lỗi: Tài khoản này đã được tạo từ trước!")
                         conn.close()
                     else: 
-                        st.error("Trùng tên! Yêu cầu nhập thêm Ngày sinh.")
+                        st.error("❌ Trùng tên trên hệ thống! Bạn bắt buộc phải nhập Ngày sinh để tạo sự khác biệt.")
 
 # --- MODULE XÓA LỚP HỌC ĐỒNG BỘ (CHỈ DÀNH CHO ADMIN LÕI) ---
 def delete_class_module(all_classes):
@@ -283,19 +325,13 @@ def main():
 
         # --- LOGIC ĐỒNG BỘ DANH SÁCH LỚP ---
         conn = sqlite3.connect('exam_db.sqlite')
-        
-        # 1. Lấy danh sách lớp đã có học sinh
         c_stu = conn.execute("SELECT DISTINCT class_name FROM users WHERE role='student' AND class_name IS NOT NULL AND class_name != ''").fetchall()
         stu_classes = [r[0].strip() for r in c_stu]
-        
-        # 2. Lấy danh sách lớp đã được GIAO CHO Admin thành viên
         c_man = conn.execute("SELECT managed_classes FROM users WHERE role='sub_admin' AND managed_classes IS NOT NULL").fetchall()
         man_classes = []
         for r in c_man:
             if r[0]:
                 man_classes.extend([x.strip() for x in r[0].split(',') if x.strip()])
-            
-        # 3. ĐỒNG BỘ HÓA: Hợp nhất tất cả các lớp vào một danh sách duy nhất
         all_cl = sorted(list(set(stu_classes + man_classes)))
         conn.close()
 
@@ -339,7 +375,6 @@ def main():
         elif choice == "👥 Quản lý khu vực":
             st.header("👥 Quản lý khu vực (Admin Thành viên)")
             my_classes = [x.strip() for x in st.session_state.managed.split(',')] if st.session_state.managed else []
-            # CẮT BỎ TAB XÓA LỚP Ở ĐÂY
             t1, t2 = st.tabs(["🎓 Danh sách học sinh", "📥 Nhập dữ liệu HS"])
             with t1: 
                 sel_my_cl = st.selectbox("📌 Xem học sinh theo lớp:", ["Tất cả các lớp"] + my_classes)
@@ -347,16 +382,6 @@ def main():
                 account_manager_ui("student", specific_class=filter_class)
             with t2: 
                 import_student_module()
-
-        elif choice == "🤖 AI Sinh đề":
-            st.header("🤖 Trí tuệ nhân tạo sinh đề")
-            st.info("Module sinh đề tự động bằng AI đang được kết nối...")
-            # (Phần logic AI Sinh đề có thể ghép vào đây)
-
-        elif choice == "📤 Phát đề/Giao bài":
-            st.header("📤 Phát đề/Giao bài tập")
-            st.info("Khu vực cấu hình phát bài tập cho học sinh...")
-            # (Phần logic Phát đề có thể ghép vào đây)
 
 if __name__ == "__main__":
     main()
