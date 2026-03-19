@@ -22,18 +22,28 @@ ADMIN_CORE_PW = "GiámĐốc2026"
 VN_TZ = timezone(timedelta(hours=7))
 
 # ==========================================
-# 1. TIỆN ÍCH XỬ LÝ CHUỖI & USERNAME
+# 1. TIỆN ÍCH XỬ LÝ CHUỖI & USERNAME (UPDATE: lqd_)
 # ==========================================
 def remove_accents(input_str):
     if not input_str: return ""
     nfkd_form = unicodedata.normalize('NFKD', str(input_str))
     return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).replace(" ", "").lower()
 
-def check_username_exists(username, class_name):
+def gen_smart_username(fullname, dob, class_name):
+    """Quy tắc: lqd_ + tên không dấu. Trùng thì thêm ngày sinh."""
+    base_name = remove_accents(fullname)
+    base_user = f"lqd_{base_name}"
+    
     conn = sqlite3.connect('exam_db.sqlite')
-    count = conn.execute("SELECT COUNT(*) FROM users WHERE username=? AND class_name=?", (username, class_name)).fetchone()[0]
+    count = conn.execute("SELECT COUNT(*) FROM users WHERE username=? AND class_name=?", (base_user, class_name)).fetchone()[0]
     conn.close()
-    return count > 0
+    
+    if count > 0:
+        if not dob or str(dob).lower() in ['nan', 'none', '']:
+            return None # Báo lỗi yêu cầu ngày sinh nếu trùng
+        suffix = "".join(filter(str.isdigit, str(dob)))
+        return f"{base_user}{suffix}"
+    return base_user
 
 # ==========================================
 # 2. HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU
@@ -59,7 +69,7 @@ def get_api_key():
     return res[0] if res else ""
 
 # ==========================================
-# 3. MODULE TÁC VỤ THÀNH PHẦN (SỬA/XÓA/NHẬP LIỆU)
+# 3. MODULE TÁC VỤ (SỬA, XÓA, NHẬP LIỆU)
 # ==========================================
 def account_manager_ui(target_role, managed_filter=None):
     st.subheader(f"🛠️ Quản lý danh sách {target_role}")
@@ -80,7 +90,7 @@ def account_manager_ui(target_role, managed_filter=None):
                 f_name = c1.text_input("Họ và Tên", value=u_data['fullname'])
                 f_pass = c2.text_input("Mật khẩu", value=u_data['password'])
                 f_cls = c1.text_input("Lớp/Đơn vị", value=u_data['class_name'] if u_data['class_name'] else "")
-                f_man = c2.text_input("Quyền quản lý lớp (Cho Admin)", value=u_data['managed_classes'] if u_data['managed_classes'] else "")
+                f_man = c2.text_input("Quyền quản lý (Cho Admin)", value=u_data['managed_classes'] if u_data['managed_classes'] else "")
                 
                 b_up, b_del = st.columns(2)
                 if b_up.form_submit_button("💾 CẬP NHẬT"):
@@ -88,16 +98,13 @@ def account_manager_ui(target_role, managed_filter=None):
                     conn.commit(); st.success("✅ Đã cập nhật!"); time.sleep(0.5); st.rerun()
                 if b_del.form_submit_button("🗑️ XÓA VĨNH VIỄN"):
                     conn.execute("DELETE FROM users WHERE username=?", (sel_u,))
-                    conn.execute("DELETE FROM mandatory_results WHERE username=?", (sel_u,))
                     conn.commit(); st.warning(f"💥 Đã xóa {sel_u}"); time.sleep(0.5); st.rerun()
-    else: st.info("Chưa có dữ liệu.")
     conn.close()
 
 def import_data_ui():
     st.markdown("### 📥 Nhập dữ liệu Học sinh")
     t1, t2 = st.tabs(["📁 Nạp File Excel", "✍️ Nhập thủ công"])
     with t1:
-        # File mẫu
         df_sample = pd.DataFrame(columns=["Họ và tên", "Ngày sinh", "Lớp", "Tên trường"])
         df_sample.loc[0] = ["Nguyễn Văn An", "19/03/2010", "9A1", "Lê Quý Đôn"]
         out = BytesIO()
@@ -111,27 +118,27 @@ def import_data_ui():
             s, f = 0, 0
             for _, r in df.iterrows():
                 name, dob, cls, sch = str(r['Họ và tên']), str(r['Ngày sinh']), str(r['Lớp']), str(r['Tên trường'])
-                uname = remove_accents(name)
-                if check_username_exists(uname, cls):
-                    if not dob or dob == 'nan': f+=1; continue
-                    uname = f"{uname}{''.join(filter(str.isdigit, dob))}"
-                try:
-                    conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)",
-                                 (uname, uname, 'student', name, dob, cls, sch))
-                    s+=1
-                except: f+=1
-            conn.commit(); conn.close(); st.success(f"✅ Thành công: {s} | ❌ Lỗi: {f}")
+                uname = gen_smart_username(name, dob, cls)
+                if uname:
+                    try:
+                        conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)",
+                                     (uname, uname, 'student', name, dob, cls, sch))
+                        s+=1
+                    except: f+=1
+                else: f+=1
+            conn.commit(); conn.close(); st.success(f"✅ Thành công: {s} | ❌ Lỗi: {f} (Trùng tên thiếu ngày sinh)")
     with t2:
         with st.form("manual_add"):
             c1, c2 = st.columns(2)
             n, c = c1.text_input("Họ và Tên"), c2.text_input("Lớp")
             d, s = c1.text_input("Ngày sinh"), c2.text_input("Trường")
             if st.form_submit_button("✅ Tạo học sinh"):
-                u = remove_accents(n)
-                if check_username_exists(u, c): u = f"{u}{''.join(filter(str.isdigit, d))}"
-                conn = sqlite3.connect('exam_db.sqlite')
-                conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)", (u, u, 'student', n, d, c, s))
-                conn.commit(); conn.close(); st.success(f"Đã tạo: {u}")
+                u = gen_smart_username(n, d, c)
+                if u:
+                    conn = sqlite3.connect('exam_db.sqlite')
+                    conn.execute("INSERT INTO users (username, password, role, fullname, dob, class_name, school) VALUES (?,?,?,?,?,?,?)", (u, u, 'student', n, d, c, s))
+                    conn.commit(); conn.close(); st.success(f"Đã tạo: {u}")
+                else: st.error("Lỗi: Phát hiện trùng tên, vui lòng nhập Ngày sinh!")
 
 # ==========================================
 # 4. GIAO DIỆN CHÍNH
@@ -177,22 +184,22 @@ def main():
 
         if choice == "🛡️ Quản trị tối cao":
             st.header("🛡️ Quản trị tối cao (Admin Lõi)")
-            t1, t2 = st.tabs(["👥 Quản lý Admin thành viên", "🎓 Quản lý Học sinh"])
+            t1, t2 = st.tabs(["👥 Quản lý Admin thành viên", "🎓 Quản lý Học sinh toàn trường"])
             with t1:
                 with st.form("add_sub"):
-                    u_s, p_s = st.text_input("Username"), st.text_input("Mật khẩu")
+                    u_s, p_s = st.text_input("Username Admin TV"), st.text_input("Mật khẩu")
                     n_s, m_s = st.text_input("Họ tên"), st.text_input("Lớp quản lý")
                     if st.form_submit_button("✅ Cấp quyền Admin TV"):
                         conn = sqlite3.connect('exam_db.sqlite')
                         conn.execute("INSERT INTO users (username, password, role, fullname, managed_classes) VALUES (?,?,'sub_admin',?,?)", (u_s, p_s, n_s, m_s))
                         conn.commit(); conn.close(); st.rerun()
                 st.divider()
-                account_manager_ui("sub_admin") # ADMIN LÕI CÓ QUYỀN XÓA ADMIN THÀNH VIÊN TẠI ĐÂY
+                account_manager_ui("sub_admin")
             with t2: account_manager_ui("student")
 
         elif choice == "👥 Quản lý lớp":
             st.header("👥 Quản lý lớp học (Admin Thành viên)")
-            t1, t2 = st.tabs(["📥 Nhập liệu", "🛠️ Tác vụ"])
+            t1, t2 = st.tabs(["📥 Nhập liệu", "🛠️ Tác vụ Sửa/Xóa"])
             with t1: import_data_ui()
             with t2: account_manager_ui("student", st.session_state.managed)
 
