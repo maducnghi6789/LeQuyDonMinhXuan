@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 # --- CẤU HÌNH HỆ THỐNG V20 SUPREME ---
 ADMIN_CORE_EMAIL = "nghihgtq@gmail.com"
-ADMIN_CORE_PW = "GiámĐốc2026"
+ADMIN_CORE_PW = "admin123"
 GEMINI_API_KEY = "AIzaSyDMdmMYUpqnB5wPxcF94Spy6LkNBdkKh2w" # Tự động dùng tài khoản Google Admin
 VN_TZ = timezone(timedelta(hours=7))
 
