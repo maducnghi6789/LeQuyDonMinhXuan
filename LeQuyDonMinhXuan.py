@@ -38,7 +38,6 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
-    """Hàm backup dọn dẹp JSON"""
     res = json_str.strip()
     md_json = "```json"
     md_code = "```"
@@ -200,7 +199,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (ÉP BUỘC CHUẨN JSON)
+# 4. MODULE AI KHẢO THÍ (ĐÃ FIX LỖI 404 MODEL)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -208,10 +207,31 @@ def extract_text_from_pdf(pdf_file):
     for page in doc: text += page.get_text("text") + "\n"
     return text
 
-def parse_exam_with_ai(raw_text, api_key):
+def safe_ai_generate(prompt, api_key):
+    """Hàm xử lý AI an toàn, có cơ chế Fallback (Dự phòng) nếu bị lỗi Model Name"""
     genai.configure(api_key=api_key)
-    # Tích hợp cấu hình response_mime_type để BẮT BUỘC AI nhả JSON chuẩn
-    model = genai.GenerativeModel('gemini-1.5-pro', generation_config={"response_mime_type": "application/json"})
+    
+    # 1. Thử gọi model xịn nhất (Pro Latest)
+    try:
+        model = genai.GenerativeModel('gemini-1.5-pro-latest', generation_config={"response_mime_type": "application/json"})
+        response = model.generate_content(prompt)
+        return json.loads(response.text)
+    except Exception as e_pro:
+        # 2. Nếu lỗi, thử gọi model mặc định (Flash) rất phổ biến và mở cho mọi tài khoản
+        try:
+            model_fallback = genai.GenerativeModel('gemini-1.5-flash', generation_config={"response_mime_type": "application/json"})
+            response = model_fallback.generate_content(prompt)
+            return json.loads(response.text)
+        except Exception as e_flash:
+            # 3. Nếu vẫn lỗi do API Key cũ không hỗ trợ JSON schema, thử không dùng config
+            try:
+                model_basic = genai.GenerativeModel('gemini-1.5-flash')
+                response = model_basic.generate_content(prompt)
+                return json.loads(clean_ai_json(response.text))
+            except Exception as e_basic:
+                return f"Lỗi kết nối AI: Thử Pro ({e_pro}), thử Flash ({e_flash}). Vui lòng kiểm tra lại API Key hoặc tạo API Key mới."
+
+def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Bạn là một giáo viên chuyên Toán cấp 2. Nhiệm vụ của bạn là đọc văn bản trích xuất từ đề thi PDF dưới đây, biên tập lại thành chuẩn đúng 40 câu hỏi trắc nghiệm.
     YÊU CẦU BẮT BUỘC:
     1. Trả về mảng JSON array chứa các object có cấu trúc: {{"q": "Nội dung câu hỏi", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "ans": "A", "exp": "Hướng dẫn giải..."}}
@@ -220,34 +240,16 @@ def parse_exam_with_ai(raw_text, api_key):
     VĂN BẢN ĐỀ THI:
     {raw_text}
     """
-    try:
-        response = model.generate_content(prompt)
-        try:
-            return json.loads(response.text)
-        except:
-            # Backup nếu AI quên cấu hình MIME
-            return json.loads(clean_ai_json(response.text))
-    except Exception as e:
-        return f"Lỗi phân tích từ Google AI: {str(e)}"
+    return safe_ai_generate(prompt, api_key)
 
 def generate_free_practice_ai(api_key):
-    genai.configure(api_key=api_key)
-    # Đẩy lên gemini-1.5-pro để tận dụng tài khoản VIP, ép cấu trúc JSON
-    model = genai.GenerativeModel('gemini-1.5-pro', generation_config={"response_mime_type": "application/json"})
     prompt = """Bạn là chuyên gia bồi dưỡng học sinh giỏi Toán lớp 9. Hãy tự động sáng tác một đề kiểm tra trắc nghiệm gồm 40 câu hỏi mức độ Vận dụng và Vận dụng cao.
     YÊU CẦU ĐỀ BÀI:
     - Nội dung: Đại số, Hình học, Số học. Không lặp lại nội dung.
     - YÊU CẦU JSON & LATEX BẮT BUỘC: Trả về mảng JSON: [{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn..."}]. 
     - TRONG JSON NÀY, TẤT CẢ công thức Toán LaTeX PHẢI được escape dấu gạch chéo (ví dụ: \\\\frac{1}{2}, \\\\sqrt{x}). Bọc công thức trong dấu $ hoặc $$.
     """
-    try:
-        response = model.generate_content(prompt)
-        try:
-            return json.loads(response.text)
-        except:
-            return json.loads(clean_ai_json(response.text))
-    except Exception as e:
-        return f"Lỗi kết nối AI: {str(e)}"
+    return safe_ai_generate(prompt, api_key)
 
 # ==========================================
 # 5. GIAO DIỆN HỌC SINH (LÀM BÀI THI)
@@ -359,7 +361,7 @@ def main():
             api_key = get_api_key()
             if role == "core_admin":
                 st.markdown("---")
-                st.subheader("🔑 Cấu hình AI (Gemini Pro)")
+                st.subheader("🔑 Cấu hình AI (Gemini)")
                 new_key = st.text_input("Gemini API Key:", value=api_key, type="password")
                 if st.button("💾 Lưu API"):
                     conn = sqlite3.connect('exam_db.sqlite')
@@ -440,7 +442,7 @@ def main():
                                                  (e_title, json.dumps(exam_res), e_time, e_class, st.session_state.current_user))
                                     conn.commit(); conn.close()
                                     st.success(f"✅ Đã giao {len(exam_res)} câu hỏi cho lớp {e_class}!")
-                                else: st.error(f"❌ AI báo lỗi: {exam_res}")
+                                else: st.error(f"❌ Cảnh báo từ AI: {exam_res}")
                         else: st.warning("Vui lòng điền Tên bài và tải File!")
 
         elif choice == "📊 Thống kê":
@@ -556,7 +558,7 @@ def main():
                                 st.session_state.taking_free_exam = {'title': "Luyện đề Vận Dụng Cao (AI Sinh)", 'time_limit': 90, 'questions': free_exam}
                                 st.rerun()
                             else: 
-                                st.error(f"❌ Lỗi sinh đề: {free_exam}")
+                                st.error(f"❌ {free_exam}")
             else:
                 take_exam_ui(st.session_state.taking_free_exam, 9999, False)
                 if st.button("❌ Hủy đề này"):
@@ -572,7 +574,7 @@ def main():
             conn.close()
             
         elif choice == "🔐 Cá nhân":
-            st.header("🔐 Thôngত্তি cá nhân")
+            st.header("🔐 Thông tin cá nhân")
             st.info(f"Xin chào {st.session_state.fullname}! Mọi thông tin của bạn đang được bảo mật an toàn.")
 
 if __name__ == "__main__":
