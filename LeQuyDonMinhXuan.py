@@ -38,7 +38,7 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
-    """Dọn dẹp chuỗi JSON an toàn"""
+    """Hàm backup dọn dẹp JSON"""
     res = json_str.strip()
     md_json = "```json"
     md_code = "```"
@@ -200,7 +200,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (GIAO ĐỀ & TẠO ĐỀ) - ĐÃ SỬA LỖI JSON/LATEX
+# 4. MODULE AI KHẢO THÍ (ÉP BUỘC CHUẨN JSON)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -210,38 +210,44 @@ def extract_text_from_pdf(pdf_file):
 
 def parse_exam_with_ai(raw_text, api_key):
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-pro')
+    # Tích hợp cấu hình response_mime_type để BẮT BUỘC AI nhả JSON chuẩn
+    model = genai.GenerativeModel('gemini-1.5-pro', generation_config={"response_mime_type": "application/json"})
     prompt = f"""Bạn là một giáo viên chuyên Toán cấp 2. Nhiệm vụ của bạn là đọc văn bản trích xuất từ đề thi PDF dưới đây, biên tập lại thành chuẩn đúng 40 câu hỏi trắc nghiệm.
     YÊU CẦU BẮT BUỘC:
-    1. Trả về DUY NHẤT mảng JSON array. Định dạng: [{{"q": "Nội dung câu hỏi", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "ans": "A", "exp": "Hướng dẫn giải..."}}]
-    2. LƯU Ý KỸ THUẬT: Vì bạn trả về định dạng JSON, mọi dấu gạch chéo ngược (backslash) của LaTeX PHẢI được nhân đôi (escape). Ví dụ: viết \\\\frac thay vì \\frac, viết \\\\sqrt thay vì \\sqrt.
+    1. Trả về mảng JSON array chứa các object có cấu trúc: {{"q": "Nội dung câu hỏi", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "ans": "A", "exp": "Hướng dẫn giải..."}}
+    2. LƯU Ý KỸ THUẬT QUAN TRỌNG: Bạn đang trả về định dạng JSON, mọi dấu gạch chéo ngược (backslash) của LaTeX PHẢI được nhân đôi (escape). Ví dụ: viết \\\\frac thay vì \\frac, viết \\\\sqrt thay vì \\sqrt.
     
     VĂN BẢN ĐỀ THI:
     {raw_text}
     """
     try:
         response = model.generate_content(prompt)
-        json_str = clean_ai_json(response.text)
-        return json.loads(json_str)
+        try:
+            return json.loads(response.text)
+        except:
+            # Backup nếu AI quên cấu hình MIME
+            return json.loads(clean_ai_json(response.text))
     except Exception as e:
-        return f"Lỗi phân tích: {str(e)}" # Trả về lỗi chi tiết
+        return f"Lỗi phân tích từ Google AI: {str(e)}"
 
 def generate_free_practice_ai(api_key):
     genai.configure(api_key=api_key)
-    # Chuyển sang model flash cho tác vụ sinh đề để chống lỗi Quá Tải (Quota)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Đẩy lên gemini-1.5-pro để tận dụng tài khoản VIP, ép cấu trúc JSON
+    model = genai.GenerativeModel('gemini-1.5-pro', generation_config={"response_mime_type": "application/json"})
     prompt = """Bạn là chuyên gia bồi dưỡng học sinh giỏi Toán lớp 9. Hãy tự động sáng tác một đề kiểm tra trắc nghiệm gồm 40 câu hỏi mức độ Vận dụng và Vận dụng cao.
     YÊU CẦU ĐỀ BÀI:
     - Nội dung: Đại số, Hình học, Số học. Không lặp lại nội dung.
-    - YÊU CẦU JSON & LATEX BẮT BUỘC: Trả về DUY NHẤT mảng JSON: [{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn..."}]. 
-    - TRONG JSON NÀY, TẤT CẢ công thức Toán LaTeX PHẢI được escape dấu gạch chéo. (Ví dụ: \\\\frac{1}{2}, \\\\sqrt{x}). Bọc công thức trong dấu $ hoặc $$.
+    - YÊU CẦU JSON & LATEX BẮT BUỘC: Trả về mảng JSON: [{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn..."}]. 
+    - TRONG JSON NÀY, TẤT CẢ công thức Toán LaTeX PHẢI được escape dấu gạch chéo (ví dụ: \\\\frac{1}{2}, \\\\sqrt{x}). Bọc công thức trong dấu $ hoặc $$.
     """
     try:
         response = model.generate_content(prompt)
-        json_str = clean_ai_json(response.text)
-        return json.loads(json_str)
+        try:
+            return json.loads(response.text)
+        except:
+            return json.loads(clean_ai_json(response.text))
     except Exception as e:
-        return f"Lỗi AI: {str(e)}" # Trả về text lỗi để hiển thị
+        return f"Lỗi kết nối AI: {str(e)}"
 
 # ==========================================
 # 5. GIAO DIỆN HỌC SINH (LÀM BÀI THI)
@@ -353,7 +359,7 @@ def main():
             api_key = get_api_key()
             if role == "core_admin":
                 st.markdown("---")
-                st.subheader("🔑 Cấu hình AI (Gemini)")
+                st.subheader("🔑 Cấu hình AI (Gemini Pro)")
                 new_key = st.text_input("Gemini API Key:", value=api_key, type="password")
                 if st.button("💾 Lưu API"):
                     conn = sqlite3.connect('exam_db.sqlite')
@@ -434,7 +440,7 @@ def main():
                                                  (e_title, json.dumps(exam_res), e_time, e_class, st.session_state.current_user))
                                     conn.commit(); conn.close()
                                     st.success(f"✅ Đã giao {len(exam_res)} câu hỏi cho lớp {e_class}!")
-                                else: st.error(f"❌ Báo lỗi từ AI: {exam_res}")
+                                else: st.error(f"❌ AI báo lỗi: {exam_res}")
                         else: st.warning("Vui lòng điền Tên bài và tải File!")
 
         elif choice == "📊 Thống kê":
@@ -546,12 +552,11 @@ def main():
                     else:
                         with st.spinner("🤖 Đang biên soạn 40 câu Toán cực khó... Xin chờ."):
                             free_exam = generate_free_practice_ai(api_key)
-                            if isinstance(free_exam, list): # KIỂM TRA THÀNH CÔNG
+                            if isinstance(free_exam, list): 
                                 st.session_state.taking_free_exam = {'title': "Luyện đề Vận Dụng Cao (AI Sinh)", 'time_limit': 90, 'questions': free_exam}
                                 st.rerun()
                             else: 
-                                # IN THẲNG LỖI RA MÀN HÌNH ĐỂ ADMIN DỄ DÀNG XỬ LÝ
-                                st.error(f"❌ Quá trình sinh đề thất bại. Lý do:\n{free_exam}")
+                                st.error(f"❌ Lỗi sinh đề: {free_exam}")
             else:
                 take_exam_ui(st.session_state.taking_free_exam, 9999, False)
                 if st.button("❌ Hủy đề này"):
@@ -567,7 +572,7 @@ def main():
             conn.close()
             
         elif choice == "🔐 Cá nhân":
-            st.header("🔐 Thông tin cá nhân")
+            st.header("🔐 Thôngত্তি cá nhân")
             st.info(f"Xin chào {st.session_state.fullname}! Mọi thông tin của bạn đang được bảo mật an toàn.")
 
 if __name__ == "__main__":
