@@ -40,8 +40,9 @@ def gen_smart_username(fullname, existing_usernames):
 def clean_ai_json(json_str):
     """Dọn dẹp chuỗi JSON an toàn chống lỗi Cú pháp và Markdown"""
     res = json_str.strip()
-    md_json = "```json"
-    md_code = "```"
+    bt = chr(96) # Fix lỗi SyntaxError dòng 45 trên Cloud
+    md_json = bt*3 + "json"
+    md_code = bt*3
     if res.startswith(md_json): res = res[7:]
     if res.startswith(md_code): res = res[3:]
     if res.endswith(md_code): res = res[:-3]
@@ -200,7 +201,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (SỬA LỖI 404 HIỂN THỊ)
+# 4. MODULE AI KHẢO THÍ (CẬP NHẬT TỰ ĐỘNG ĐẢO MODEL)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -211,18 +212,23 @@ def extract_text_from_pdf(pdf_file):
 def safe_ai_generate(prompt, api_key):
     """Trái tim AI: Bắt lỗi thân thiện với người dùng, đặc biệt là lỗi 429 và 404"""
     genai.configure(api_key=api_key)
-    try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(prompt)
-        return json.loads(clean_ai_json(response.text))
-    except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg:
-            return "LỖI HẠN NGẠCH (Quota 429): Tài khoản đang bị quá tải yêu cầu. Vui lòng chờ 1 phút rồi bấm lại."
-        elif "404" in error_msg:
-            return "LỖI KẾT NỐI (404): Không tìm thấy mô hình AI tương thích. Vui lòng tạo một API Key mới tại Google AI Studio và cập nhật vào hệ thống."
-        else:
-            return f"Lỗi AI không xác định: {error_msg}"
+    model_names = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-pro']
+    last_err = ""
+    for name in model_names:
+        try:
+            model = genai.GenerativeModel(name)
+            response = model.generate_content(prompt)
+            return json.loads(clean_ai_json(response.text))
+        except Exception as e:
+            last_err = str(e)
+            continue
+            
+    if "429" in last_err or "Quota" in last_err:
+        return "LỖI HẠN NGẠCH (Quota 429): Tài khoản đang bị quá tải yêu cầu. Vui lòng dùng API trả phí hoặc chờ 1 phút."
+    elif "404" in last_err:
+        return "LỖI KẾT NỐI (404): Không tìm thấy mô hình AI tương thích. Vui lòng kiểm tra lại API Key Google AI Studio."
+    else:
+        return f"Lỗi AI không xác định: {last_err}"
 
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Bạn là một giáo viên chuyên Toán cấp 2. Nhiệm vụ của bạn là đọc văn bản trích xuất từ đề thi PDF dưới đây, biên tập lại thành chuẩn đúng 40 câu hỏi trắc nghiệm.
@@ -299,8 +305,52 @@ def render_exam_content(text):
 # ==========================================
 # 6. GIAO DIỆN HỌC SINH (LÀM BÀI VÀ TRẢ KẾT QUẢ TRỰC QUAN)
 # ==========================================
-def take_exam_ui(exam_data, exam_id, is_mandatory=True):
-    st.markdown(f"### 📝 {exam_data.get('title', 'Luyện đề tự do')}")
+def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_ans_data=None):
+    # CHẾ ĐỘ XEM LẠI BÀI ĐÃ LÀM
+    if is_review and user_ans_data:
+        st.markdown(f"### 🔍 XEM LẠI BÀI: {exam_data.get('title')}")
+        questions = exam_data['questions']
+        correct_count = 0
+        for i, q in enumerate(questions):
+            correct_char = q['ans'].strip()[0].upper()
+            usr_choice = user_ans_data.get(str(i), user_ans_data.get(i))
+            if usr_choice and str(usr_choice).strip().upper().startswith(correct_char):
+                correct_count += 1
+        
+        st.success("🎉 **BẠN ĐANG XEM LẠI KẾT QUẢ BÀI THI!**")
+        col1, col2 = st.columns(2)
+        score = round((correct_count / len(questions)) * 10, 2)
+        col1.metric("📌 ĐIỂM SỐ", f"{score} / 10")
+        col2.metric("🎯 SỐ CÂU ĐÚNG", f"{correct_count} / {len(questions)}")
+        st.divider()
+        
+        st.markdown("### 📊 CHI TIẾT TỪNG CÂU & HƯỚNG DẪN GIẢI")
+        for i, q in enumerate(questions):
+            correct_char = q['ans'].strip()[0].upper()
+            usr_choice = user_ans_data.get(str(i), user_ans_data.get(i))
+            is_correct = False
+            if usr_choice and str(usr_choice).strip().upper().startswith(correct_char):
+                is_correct = True
+                
+            icon = "✅ ĐÚNG" if is_correct else "❌ SAI"
+            with st.expander(f"Câu {i+1}: {icon} | Đáp án chuẩn: {q['ans']}"):
+                render_exam_content(q['q'])
+                st.markdown(f"**Bạn đã chọn:** `{usr_choice if usr_choice else 'Không chọn'}`")
+                if not is_correct:
+                    st.error("Câu trả lời chưa chính xác.")
+                st.info(f"**Hướng dẫn (Brief Solution):**\n{q.get('exp', 'Đang cập nhật...')}")
+                
+        if st.button("⬅️ Trở về danh sách đề"):
+            st.session_state.show_results = False
+            st.session_state.current_exam_id = None
+            st.session_state.taking_free_exam = None
+            st.session_state.taking_exam = None
+            st.session_state.review_mode = False
+            st.rerun()
+        return
+
+    # CHẾ ĐỘ LÀM BÀI MỚI
+    st.markdown(f"### 📝 LÀM BÀI: {exam_data.get('title', 'Luyện đề tự do')}")
     time_limit = exam_data.get('time_limit', 90)
     questions = exam_data['questions']
     
@@ -490,7 +540,6 @@ def main():
 
         elif choice == "📤 Giao đề thi thử":
             st.header("📤 Giao đề thi thử (Bằng File PDF)")
-            st.info("💡 Tải file PDF chứa đề trắc nghiệm. AI sẽ tự động đọc, tạo hướng dẫn giải và ép chuẩn công thức Toán (LaTeX).")
             if not api_key: st.error("❌ Hệ thống chưa cấu hình Gemini API Key.")
             else:
                 target_classes = ["Tất cả các lớp"] + all_cl if role == "core_admin" else [x.strip() for x in st.session_state.managed.split(',')]
@@ -500,19 +549,32 @@ def main():
                     e_time = st.number_input("Thời gian (Phút):", min_value=15, value=90, step=5)
                     e_file = st.file_uploader("Tải Đề thi (PDF)", type="pdf")
                     
-                    if st.form_submit_button("🚀 BIÊN TẬP & GIAO ĐỀ BẰNG AI"):
+                    if st.form_submit_button("🚀 BIÊN TẬP & XEM TRƯỚC"):
                         if e_title and e_file:
                             with st.spinner("🤖 AI đang giải đề và phân tích PDF... (Có thể mất 1-2 phút)"):
                                 raw_txt = extract_text_from_pdf(e_file)
                                 exam_res = parse_exam_with_ai(raw_txt, api_key)
                                 if isinstance(exam_res, list):
-                                    conn = sqlite3.connect('exam_db.sqlite')
-                                    conn.execute("INSERT INTO mandatory_exams (title, questions_json, time_limit, target_class, created_by) VALUES (?,?,?,?,?)",
-                                                 (e_title, json.dumps(exam_res), e_time, e_class, st.session_state.current_user))
-                                    conn.commit(); conn.close()
-                                    st.success(f"✅ Đã giao {len(exam_res)} câu hỏi cho lớp {e_class}!")
+                                    st.session_state.temp_exam_data = {'title': e_title, 'class': e_class, 'time': e_time, 'questions': exam_res}
                                 else: st.error(f"❌ {exam_res}")
                         else: st.warning("Vui lòng điền Tên bài và tải File!")
+                
+                if st.session_state.get('temp_exam_data'):
+                    data = st.session_state.temp_exam_data
+                    for i, q in enumerate(data['questions']):
+                        with st.expander(f"Câu {i+1} - Đáp án: {q['ans']}"):
+                            render_exam_content(q['q'])
+                            for opt in q['options']: render_exam_content(opt)
+                            st.success(f"**Hướng dẫn:**\n{q.get('exp', '')}")
+                    
+                    if st.button("💾 XÁC NHẬN GIAO ĐỀ"):
+                        conn = sqlite3.connect('exam_db.sqlite')
+                        conn.execute("INSERT INTO mandatory_exams (title, questions_json, time_limit, target_class, created_by) VALUES (?,?,?,?,?)",
+                                     (data['title'], json.dumps(data['questions']), data['time'], data['class'], st.session_state.current_user))
+                        conn.commit(); conn.close()
+                        st.success("✅ Đã giao đề thành công!")
+                        st.session_state.temp_exam_data = None
+                        time.sleep(1); st.rerun()
 
         elif choice == "📊 Thống kê":
             st.header("📊 Thống kê & Phân tích Đề thi")
@@ -605,21 +667,38 @@ def main():
                 if st.session_state.get('taking_exam') is None:
                     for e_id, e_title, e_json, e_time in exams:
                         c1, c2 = st.columns([3, 1])
-                        c1.write(f"**{e_title}** (Thời gian: {e_time} phút)")
-                        done = conn.execute("SELECT score FROM mandatory_results WHERE username=? AND exam_id=?", (st.session_state.current_user, e_id)).fetchone()
-                        if done: c2.success(f"Đã nộp: {done[0]} điểm")
+                        
+                        # Truy xuất thêm json đáp án người dùng
+                        done = conn.execute("SELECT score, user_answers_json FROM mandatory_results WHERE username=? AND exam_id=?", (st.session_state.current_user, e_id)).fetchone()
+                        if done: 
+                            # TASK 1 & 3: Đổi Tên bài thành Nút bấm xem lại, xóa chữ thời gian
+                            if c1.button(f"{e_title}", key=f"rev_{e_id}"):
+                                st.session_state.taking_exam = {'id': e_id, 'title': e_title, 'time_limit': e_time, 'questions': json.loads(e_json)}
+                                st.session_state.review_mode = True
+                                st.session_state.review_data = json.loads(done[1])
+                                st.rerun()
+                            c2.success(f"Đã nộp: {done[0]} điểm")
                         else:
+                            # TASK 3: Xóa chữ thời gian
+                            c1.write(f"**{e_title}**")
                             if c2.button("▶️ LÀM BÀI", key=f"btn_{e_id}"):
                                 st.session_state.taking_exam = {'id': e_id, 'title': e_title, 'time_limit': e_time, 'questions': json.loads(e_json)}
+                                st.session_state.review_mode = False
                                 st.rerun()
-                else: take_exam_ui(st.session_state.taking_exam, st.session_state.taking_exam['id'], True)
+                else: 
+                    take_exam_ui(
+                        st.session_state.taking_exam, 
+                        st.session_state.taking_exam['id'], 
+                        True, 
+                        st.session_state.get('review_mode', False), 
+                        st.session_state.get('review_data', None)
+                    )
             conn.close()
 
         elif choice == "🚀 Luyện đề tự do":
-            st.header("🚀 Luyện đề tự do (Hệ thống Sinh đề Hybrid)")
-            st.info("🤖 Hệ thống sẽ lấy ngẫu nhiên 20 câu có sẵn trong kho lưu trữ của nhà trường, kết hợp AI tự động sáng tác 20 câu hỏi cực khó để tạo thành 1 đề thi 40 câu hoàn chỉnh.")
+            st.header("🚀 Luyện đề tự do") # TASK 3: Bỏ chữ mô tả dư thừa
             if st.session_state.get('taking_free_exam') is None:
-                if st.button("🪄 TẠO ĐỀ HYBRID & VÀO THI NGAY", type="primary"):
+                if st.button("🪄 TẠO ĐỀ", type="primary"): # TASK 3: Đổi chữ gọn gọn gàng
                     if not api_key: st.error("❌ Hệ thống chưa kết nối AI.")
                     else:
                         with st.spinner("🤖 Đang quét kho dữ liệu và kết nối AI sinh đề... Xin chờ (hoặc thử lại nếu lỗi 429)."):
