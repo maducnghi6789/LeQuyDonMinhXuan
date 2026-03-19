@@ -15,8 +15,8 @@ import fitz  # PyMuPDF
 import google.generativeai as genai
 
 # --- CẤU HÌNH HỆ THỐNG V30 ---
-ADMIN_CORE_EMAIL = "nghihgtq@gmail.com"
-ADMIN_CORE_PW = "GiámĐốc2026"
+ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
+ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
 
 # ==========================================
