@@ -4,4 +4,5 @@ matplotlib
 numpy
 google-generativeai
 openpyxl
-PyPDF2
+PyMuPDF
+Pillow
