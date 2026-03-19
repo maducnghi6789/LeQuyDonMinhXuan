@@ -200,7 +200,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (HYBRID MATRIX TỐI THƯỢNG)
+# 4. MODULE AI KHẢO THÍ (HYBRID MATRIX & BẮT LỖI)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -209,7 +209,6 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Trái tim AI: Bắt lỗi Quota 429 và định dạng JSON"""
     genai.configure(api_key=api_key)
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
@@ -218,7 +217,7 @@ def safe_ai_generate(prompt, api_key):
     except Exception as e:
         error_msg = str(e)
         if "429" in error_msg or "Quota" in error_msg:
-            return "LỖI HẠN NGẠCH (429): API đang bị quá tải. Vui lòng chờ 1-2 phút rồi bấm lại."
+            return "LỖI HẠN NGẠCH (429): API đang bị quá tải. Vui lòng chờ 1 phút rồi bấm lại."
         else:
             return f"Lỗi AI: {error_msg}"
 
@@ -233,14 +232,6 @@ def parse_exam_with_ai(raw_text, api_key):
     return safe_ai_generate(prompt, api_key)
 
 def generate_free_practice_hybrid(api_key):
-    """
-    THUẬT TOÁN HYBRID MATRIX: 
-    - Bốc 20 câu ngẫu nhiên từ kho APP.
-    - Cung cấp nội dung 20 câu đó cho AI.
-    - Ép AI sinh 20 câu khác biệt hoàn toàn để bù đắp ma trận.
-    - Trộn đều 40 câu.
-    """
-    # 1. Rút câu hỏi từ CSDL
     conn = sqlite3.connect('exam_db.sqlite')
     exams = conn.execute("SELECT questions_json FROM mandatory_exams").fetchall()
     conn.close()
@@ -254,7 +245,6 @@ def generate_free_practice_hybrid(api_key):
     
     valid_local = [q for q in local_bank if 'q' in q and 'options' in q and 'ans' in q]
     
-    # 2. Lấy ngẫu nhiên tối đa 20 câu
     num_app_qs = min(20, len(valid_local))
     app_qs = random.sample(valid_local, num_app_qs) if num_app_qs > 0 else []
     
@@ -262,18 +252,17 @@ def generate_free_practice_hybrid(api_key):
     ai_qs = []
     
     if num_ai_qs > 0:
-        # Trích xuất dạng rút gọn nội dung 20 câu đã chọn để AI không bị trùng
         app_context = ""
         if app_qs:
             app_context = "\n".join([f"- {q['q'][:100]}..." for q in app_qs])
         
-        prompt = f"""Bạn là chuyên gia bồi dưỡng học sinh giỏi Toán lớp 9. Tôi đang tạo một đề thi 40 câu theo chuẩn ma trận Toán THCS (Đại số, Hình học, Số học, Xác suất).
+        prompt = f"""Bạn là chuyên gia bồi dưỡng học sinh giỏi Toán lớp 9. Tôi đang tạo một đề thi 40 câu theo chuẩn ma trận Toán THCS (Đại số, Hình học, Số học).
         Hệ thống đã chọn sẵn {num_app_qs} câu hỏi có nội dung như sau:
         {app_context}
 
         NHIỆM VỤ: 
-        Hãy sáng tác thêm ĐÚNG {num_ai_qs} câu hỏi trắc nghiệm (Mức Vận dụng & VDC) để HOÀN THIỆN ma trận đề.
-        YÊU CẦU TỐI THƯỢNG: TUYỆT ĐỐI KHÔNG lặp lại dạng toán, nội dung của {num_app_qs} câu đã có ở trên. 40 câu phải hoàn toàn khác biệt.
+        Hãy sáng tác thêm ĐÚNG {num_ai_qs} câu hỏi trắc nghiệm (Mức Vận dụng & VDC) để HOÀN THIỆN ma trận.
+        YÊU CẦU TỐI THƯỢNG: KHÔNG lặp lại dạng toán của {num_app_qs} câu đã có ở trên. 40 câu phải hoàn toàn khác biệt.
         
         ĐỊNH DẠNG BẮT BUỘC: 
         - Trả về mảng JSON: [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn..."}}]. 
@@ -284,24 +273,20 @@ def generate_free_practice_hybrid(api_key):
         if isinstance(ai_res, list):
             ai_qs = ai_res
         else:
-            return ai_res # Trả về lỗi nếu AI hỏng (Quota, API...)
+            return ai_res 
             
-    # 3. Nạp chung và LẮC ĐỀU
     combined_qs = app_qs + ai_qs
     random.shuffle(combined_qs)
-    
-    # Cắt chính xác 40 câu đề phòng AI sinh thừa
     return combined_qs[:40]
 
 # ==========================================
 # 5. TIỆN ÍCH HIỂN THỊ CÔNG THỨC TOÁN
 # ==========================================
 def render_exam_content(text):
-    """Hỗ trợ render hiển thị nội dung chứa LaTeX lên giao diện UI"""
     st.write(text)
 
 # ==========================================
-# 6. GIAO DIỆN HỌC SINH (LÀM BÀI VÀ TRẢ KẾT QUẢ TRỰC QUAN)
+# 6. GIAO DIỆN HỌC SINH (LÀM BÀI VÀ CHỐNG LỖI HIỂN THỊ)
 # ==========================================
 def take_exam_ui(exam_data, exam_id, is_mandatory=True):
     st.markdown(f"### 📝 {exam_data.get('title', 'Luyện đề tự do')}")
@@ -362,17 +347,23 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True):
                     conn.commit(); conn.close()
                     
                 st.session_state.score = score
-                st.session_state.correct_count = correct
                 st.session_state.show_results = True
                 st.rerun()
                 
     else:
-        # --- HIỂN THỊ KẾT QUẢ ĐÚNG/SAI TRỰC QUAN ---
+        # --- CƠ CHẾ TÍNH TOÁN REAL-TIME ĐỂ CHỐNG LỖI ATTRIBUTE ERROR ---
+        correct_count = 0
+        for i, q in enumerate(questions):
+            correct_char = q['ans'].strip()[0].upper()
+            usr_choice = st.session_state.student_answers.get(i)
+            if usr_choice and str(usr_choice).strip().upper().startswith(correct_char):
+                correct_count += 1
+                
         st.success("🎉 **BẠN ĐÃ HOÀN THÀNH BÀI THI!**")
         
         col1, col2 = st.columns(2)
-        col1.metric("📌 TỔNG ĐIỂM", f"{st.session_state.score} / 10")
-        col2.metric("🎯 SỐ CÂU ĐÚNG", f"{st.session_state.correct_count} / {len(questions)}")
+        col1.metric("📌 TỔNG ĐIỂM", f"{st.session_state.get('score', 0)} / 10")
+        col2.metric("🎯 SỐ CÂU ĐÚNG", f"{correct_count} / {len(questions)}")
         st.divider()
         
         st.markdown("### 📊 CHI TIẾT TỪNG CÂU & HƯỚNG DẪN GIẢI")
@@ -380,12 +371,10 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True):
             correct_char = q['ans'].strip()[0].upper()
             usr_choice = st.session_state.student_answers.get(i)
             
-            # Kiểm tra đúng sai
             is_correct = False
             if usr_choice and str(usr_choice).strip().upper().startswith(correct_char):
                 is_correct = True
                 
-            # Đổi icon cảnh báo trực quan
             icon = "✅ ĐÚNG" if is_correct else "❌ SAI"
             
             with st.expander(f"Câu {i+1}: {icon} | Đáp án chuẩn: {q['ans']}"):
