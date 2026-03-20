@@ -6,3 +6,4 @@ openpyxl
 Pillow
 google-generativeai
 PyMuPDF
+bcrypt
