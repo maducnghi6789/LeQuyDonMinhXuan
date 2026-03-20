@@ -8,7 +8,7 @@ import time
 import unicodedata
 import random
 import re
-import bcrypt # BẢO MẬT: Thêm thư viện mã hóa mật khẩu
+import bcrypt # BẢO MẬT: Thư viện mã hóa mật khẩu
 from io import BytesIO
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,12 +17,12 @@ import fitz  # PyMuPDF
 import google.generativeai as genai
 
 # --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME) ---
-ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
-ADMIN_CORE_PW = "admin123"
+ADMIN_CORE_EMAIL = "nghihgtq@gmail.com"
+ADMIN_CORE_PW = "GiámĐốc2026"
 VN_TZ = timezone(timedelta(hours=7))
 
 # ==========================================
-# 1. TIỆN ÍCH BẢO MẬT & KẾT NỐI (CẬP NHẬT 13 FIX)
+# 1. TIỆN ÍCH BẢO MẬT & XỬ LÝ CHUỖI
 # ==========================================
 def get_conn():
     """FIX (13): Tối ưu DB connection chống sập App đa luồng"""
@@ -37,7 +37,7 @@ def check_pw(pw, hashed):
     try:
         return bcrypt.checkpw(pw.encode('utf-8'), hashed.encode('utf-8'))
     except:
-        return pw == hashed # Fallback cho các mật khẩu cũ chưa mã hóa
+        return pw == hashed # Fallback cho mật khẩu cũ chưa mã hóa
 
 def remove_accents(input_str):
     if not input_str: return ""
@@ -64,6 +64,14 @@ def clean_ai_json(json_str):
     if res.startswith(md_code): res = res[3:]
     if res.endswith(md_code): res = res[:-3]
     return res.strip()
+
+def format_math(text):
+    """Máy sấy công thức: Khắc phục lỗi hiển thị LaTeX"""
+    if not isinstance(text, str): return str(text)
+    bt = chr(96)
+    text = re.sub(bt + r'([^' + bt + r']*\\[a-zA-Z]+[^' + bt + r']*)' + bt, r'$\1$', text)
+    text = text.replace('\\\\', '\\')
+    return text
 
 def get_api_key():
     conn = get_conn()
@@ -100,7 +108,7 @@ def init_db():
 
     c.execute('''CREATE TABLE IF NOT EXISTS mandatory_results (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, exam_id INTEGER, score REAL, user_answers_json TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
     
-    # BẢO MẬT: Kiểm tra xem admin đã có chưa để không mã hóa lại nhiều lần
+    # BẢO MẬT: Kiểm tra Admin
     admin_exists = conn.execute("SELECT 1 FROM users WHERE username=?", (ADMIN_CORE_EMAIL,)).fetchone()
     if not admin_exists:
         c.execute("INSERT INTO users (username, password, role, fullname) VALUES (?, ?, 'core_admin', 'Giám Đốc Hệ Thống')", (ADMIN_CORE_EMAIL, hash_pw(ADMIN_CORE_PW)))
@@ -125,7 +133,7 @@ def account_manager_ui(target_role, specific_class=None):
     st.markdown(f"#### 🛠️ Quản lý {target_role}")
     conn = get_conn()
     
-    # FIX (1): Chống SQL Injection cực nguy hiểm
+    # FIX (1): Chống SQL Injection
     query = "SELECT * FROM users WHERE role=?"
     params = [target_role]
     if specific_class and specific_class != "Tất cả các lớp": 
@@ -139,7 +147,7 @@ def account_manager_ui(target_role, specific_class=None):
         if 'school' in df.columns: cols.append('school')
         if 'managed_classes' in df.columns and target_role == 'sub_admin': cols.append('managed_classes')
         
-        # FIX (2): Chống lộ mật khẩu (Hiển thị trực tiếp)
+        # FIX (2): Chống lộ mật khẩu
         df_display = df.copy()
         if 'password' in df_display.columns:
             df_display['password'] = '********'
@@ -203,7 +211,7 @@ def import_student_module():
                     if name and name.lower() != 'nan' and cls and cls.lower() != 'nan':
                         uname = gen_smart_username(name, existing); existing.add(uname)
                         try:
-                            # FIX (3): Hash password khi tạo user mới
+                            # FIX (3): Hash password khi tạo mới
                             conn.execute("INSERT INTO users (username, password, role, fullname, class_name) VALUES (?,?,?,?,?)", (uname, hash_pw("123@"), "student", name, cls))
                             s += 1
                         except Exception as e: f += 1; errs.append(f"- Dòng {idx+2}: Lỗi DB")
@@ -253,9 +261,9 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Trái tim AI: Bắt lỗi thân thiện với người dùng, đặc biệt là lỗi 429 và 404"""
+    """Trái tim AI: Bắt lỗi thân thiện, đảo model, chống Crash JSON"""
     genai.configure(api_key=api_key)
-    # FIX (6): Sửa Fallback chống lỗi 404 Model
+    # FIX (6): Fallback chống lỗi 404
     model_names = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-pro']
     last_err = ""
     for name in model_names:
@@ -266,30 +274,29 @@ def safe_ai_generate(prompt, api_key):
             try:
                 return json.loads(clean_ai_json(response.text))
             except json.JSONDecodeError:
-                return "LỖI AI: JSON không hợp lệ (AI trả sai format)"
+                return "LỖI AI: Định dạng JSON trả về không hợp lệ."
         except Exception as e:
             last_err = str(e)
             continue
             
     if "429" in last_err or "Quota" in last_err:
-        return "LỖI HẠN NGẠCH (Quota 429): Tài khoản đang bị quá tải yêu cầu. Vui lòng chờ 1 phút rồi bấm lại."
+        return "LỖI HẠN NGẠCH (Quota 429): Quá tải yêu cầu. Hãy dùng API trả phí hoặc chờ 1 phút."
     elif "404" in last_err:
         return "LỖI KẾT NỐI (404): Không tìm thấy mô hình AI tương thích. Vui lòng kiểm tra lại API Key Google."
     else:
         return f"Lỗi AI không xác định: {last_err}"
 
 def parse_exam_with_ai(raw_text, api_key):
-    prompt = f"""Bạn là một giáo viên chuyên Toán cấp 2. Nhiệm vụ của bạn là đọc văn bản trích xuất từ đề thi PDF dưới đây, biên tập lại thành chuẩn đúng 40 câu hỏi trắc nghiệm.
-    YÊU CẦU BẮT BUỘC:
-    1. Trả về mảng JSON array chứa các object có cấu trúc: [{{"q": "Nội dung câu hỏi", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "ans": "A", "exp": "Hướng dẫn giải..."}}]
-    2. LƯU Ý KỸ THUẬT: Mọi dấu gạch chéo ngược (backslash) của LaTeX PHẢI được nhân đôi (escape). Ví dụ: viết \\\\frac thay vì \\frac, viết \\\\sqrt thay vì \\sqrt.
+    prompt = f"""Bạn là giáo viên Toán. Biên tập văn bản PDF dưới đây thành chuẩn đúng 40 câu trắc nghiệm.
+    YÊU CẦU: Trả về mảng JSON array: [{{"q": "Câu hỏi", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "Hướng dẫn..."}}]
+    LƯU Ý KỸ THUẬT: TẤT CẢ công thức Toán học PHẢI được bọc trong dấu $ (ví dụ: $\\sqrt{{2}}$). Escape backslash (\\\\frac).
     VĂN BẢN ĐỀ THI:
     {raw_text}
     """
     return safe_ai_generate(prompt, api_key)
 
 def generate_free_practice_hybrid(api_key):
-    """CÔNG NGHỆ LAI TẠO (HYBRID): Lấy 20 câu ngẫu nhiên từ Ngân hàng đề của APP, sinh 20 câu từ AI, lắc đều."""
+    """CÔNG NGHỆ HYBRID: Lấy 20 câu kho APP, sinh 20 câu AI, lắc đều."""
     conn = get_conn()
     exams = conn.execute("SELECT questions_json FROM mandatory_exams").fetchall()
     conn.close()
@@ -315,14 +322,10 @@ def generate_free_practice_hybrid(api_key):
         if app_qs:
             app_context = "\n".join([f"- {q['q'][:100]}..." for q in app_qs])
         
-        prompt = f"""Bạn là chuyên gia bồi dưỡng Toán lớp 9. Tôi đang tạo một đề thi 40 câu theo chuẩn ma trận Toán THCS.
-        Hệ thống đã chọn sẵn {num_app_qs} câu hỏi có nội dung như sau:
-        {app_context}
-
-        NHIỆM VỤ: Hãy sáng tác thêm ĐÚNG {num_ai_qs} câu hỏi trắc nghiệm (Mức Vận dụng & VDC). TUYỆT ĐỐI KHÔNG lặp lại dạng toán ở trên.
-        ĐỊNH DẠNG BẮT BUỘC: 
-        - Trả về mảng JSON: [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn..."}}]. 
-        - TRONG JSON NÀY, TẤT CẢ công thức Toán LaTeX PHẢI được escape dấu gạch chéo (ví dụ: \\\\frac{{1}}{{2}}). Bọc công thức trong dấu $ hoặc $$.
+        prompt = f"""Bạn là chuyên gia Toán. Sáng tác thêm ĐÚNG {num_ai_qs} câu trắc nghiệm để hoàn thiện 40 câu.
+        Tránh trùng nội dung: {app_context}
+        JSON BẮT BUỘC: [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn..."}}]. 
+        LƯU Ý KỸ THUẬT: TẤT CẢ công thức Toán học PHẢI được bọc trong dấu $ (ví dụ: $\\sqrt{{2}}$). Escape backslash (\\\\frac).
         """
         ai_res = safe_ai_generate(prompt, api_key)
         
@@ -338,24 +341,20 @@ def generate_free_practice_hybrid(api_key):
 # ==========================================
 def render_exam_content(text):
     """Hỗ trợ render hiển thị nội dung chứa LaTeX lên giao diện UI"""
-    if isinstance(text, str):
-        bt = chr(96)
-        text = re.sub(bt + r'([^' + bt + r']*\\[a-zA-Z]+[^' + bt + r']*)' + bt, r'$\1$', text)
-        text = text.replace('\\\\', '\\')
-    st.write(text)
+    st.write(format_math(text))
 
 # ==========================================
-# 6. GIAO DIỆN HỌC SINH (LÀM BÀI VÀ TRẢ KẾT QUẢ TRỰC QUAN)
+# 6. GIAO DIỆN HỌC SINH (LÀM BÀI VÀ TRẢ KẾT QUẢ/XEM LẠI)
 # ==========================================
 def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_ans_data=None):
     
-    # --- YÊU CẦU: CHẾ ĐỘ XEM LẠI BÀI ---
+    # --- CHẾ ĐỘ XEM LẠI BÀI ---
     if is_review and user_ans_data:
         st.markdown(f"### 🔍 XEM LẠI BÀI: {exam_data.get('title')}")
         questions = exam_data['questions']
         correct_count = 0
         for i, q in enumerate(questions):
-            # FIX (7): Lỗi index int/string khi lấy đáp án
+            # FIX (7): Lỗi index int/string
             ans = user_ans_data.get(str(i)) or user_ans_data.get(i)
             correct_char = q['ans'].strip()[0].upper()
             if ans and str(ans).strip().upper().startswith(correct_char):
@@ -379,9 +378,13 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
             icon = "✅ ĐÚNG" if is_correct else "❌ SAI"
             with st.expander(f"Câu {i+1}: {icon} | Đáp án chuẩn: {q['ans']}"):
                 render_exam_content(q['q'])
-                st.markdown(f"**Bạn đã chọn:** `{usr_choice if usr_choice else 'Không chọn'}`")
+                # BỎ NHÁY NGƯỢC XUNG QUANH usr_choice ĐỂ HIỂN THỊ TOÁN HỌC CHUẨN
+                formatted_choice = format_math(str(usr_choice)) if usr_choice else 'Không chọn'
+                st.markdown(f"**Bạn đã chọn:** {formatted_choice}")
+                
                 if not is_correct: st.error("Câu trả lời chưa chính xác.")
-                st.info(f"**Hướng dẫn (Brief Solution):**\n{q.get('exp', 'Đang cập nhật...')}")
+                # BỌC format_math CHO HƯỚNG DẪN GIẢI
+                st.info(f"**Hướng dẫn (Brief Solution):**\n{format_math(q.get('exp', 'Đang cập nhật...'))}")
                 
         if st.button("⬅️ Trở về danh sách đề"):
             st.session_state.show_results = False
@@ -401,6 +404,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
         st.session_state.student_answers = {}
         st.session_state.current_exam_id = exam_id
         st.session_state.show_results = False
+        st.session_state[f"submitted_{exam_id}"] = False # Khởi tạo cờ submit
 
     if not st.session_state.get('show_results'):
         timer_html = f"""
@@ -416,7 +420,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
                 var m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
                 var s = Math.floor((distance % (1000 * 60)) / 1000);
                 document.getElementById("timer").innerHTML = m + "p " + s + "s ";
-                // FIX (12): Timer JS fallback
+                // FIX (12): Timer JS Fallback
                 if (distance < 0 && !window.submitted) {{
                     window.submitted = true;
                     clearInterval(x);
@@ -433,21 +437,17 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
             for i, q in enumerate(questions):
                 st.markdown(f"**Câu {i+1}:**")
                 render_exam_content(q['q'])
-                # Bọc format_math để lọc đáp án trắc nghiệm nếu có LaTeX
-                formatted_options = [q_opt if not isinstance(q_opt, str) else re.sub(chr(96) + r'([^`]*\\[a-zA-Z]+[^`]*)' + chr(96), r'$\1$', q_opt).replace('\\\\', '\\') for q_opt in q['options']]
+                formatted_options = [format_math(q_opt) for q_opt in q['options']]
                 st.session_state.student_answers[i] = st.radio("Chọn đáp án:", formatted_options, index=None, key=f"q_{i}")
                 st.divider()
             
             if st.form_submit_button("✅ NỘP BÀI / KẾT THÚC"):
                 # FIX (11): Chống spam submit bài
-                if st.session_state.get(f"submitted_{exam_id}"):
-                    st.warning("Bạn đã nộp bài này rồi!")
-                else:
+                if not st.session_state.get(f"submitted_{exam_id}"):
                     st.session_state[f"submitted_{exam_id}"] = True
                     correct = 0
                     for i, q in enumerate(questions):
                         correct_char = q['ans'].strip()[0].upper()
-                        # FIX (7): Key answer get
                         usr_choice = st.session_state.student_answers.get(i) or st.session_state.student_answers.get(str(i))
                         if usr_choice and str(usr_choice).strip().upper().startswith(correct_char):
                             correct += 1
@@ -483,7 +483,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
 # 7. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH
 # ==========================================
 def main():
-    st.set_page_config(page_title="LMS Lê Quý Đôn A1", layout="wide")
+    st.set_page_config(page_title="LMS A1 SUPREME", layout="wide")
     init_db()
     
     if 'current_user' not in st.session_state:
@@ -494,7 +494,7 @@ def main():
                 u = st.text_input("Tài khoản").strip(); p = st.text_input("Mật khẩu", type="password").strip()
                 if st.form_submit_button("🚀 ĐĂNG NHẬP"):
                     conn = get_conn()
-                    # FIX (3): Login check với Hash
+                    # FIX (3): Kiểm tra Hash Password
                     res = conn.execute("SELECT role, fullname, class_name, managed_classes, password FROM users WHERE username=?", (u,)).fetchone()
                     conn.close()
                     if res and check_pw(p, res[4]):
@@ -534,7 +534,7 @@ def main():
             c_stu = [r[0].strip() for r in conn.execute("SELECT DISTINCT class_name FROM users WHERE role='student' AND class_name != ''").fetchall()]
             c_man = []
             for r in conn.execute("SELECT managed_classes FROM users WHERE role='sub_admin'").fetchall():
-                # FIX (4): BUG crash khi managed_classes = None
+                # FIX (4): Bug crash khi managed_classes None
                 if r[0]: c_man.extend([x.strip() for x in r[0].split(',') if x.strip()])
             all_cl = sorted(list(set(c_stu + c_man)))
             conn.close()
@@ -548,7 +548,7 @@ def main():
                     if st.form_submit_button("Cấp quyền"):
                         conn = get_conn()
                         try:
-                            # FIX (3): Thêm Hash PW cho admin mới
+                            # FIX (3): Thêm mã hóa PW cho admin con
                             conn.execute("INSERT INTO users (username, password, role, fullname, managed_classes) VALUES (?,?,'sub_admin',?,?)", (u_s, hash_pw(p_s), n_s, m_s))
                             conn.commit(); st.success("Xong!"); st.rerun()
                         except: st.error("Đã có User này!")
@@ -692,7 +692,7 @@ def main():
                         done = conn.execute("SELECT score, user_answers_json FROM mandatory_results WHERE username=? AND exam_id=?", (st.session_state.current_user, e_id)).fetchone()
                         
                         if done: 
-                            # Thay thế bằng nút bấm Xem lại bài (YÊU CẦU CỦA BẠN ĐÃ ĐƯỢC GIỮ)
+                            # Nút bấm Xem lại bài (YÊU CẦU UI MỚI)
                             if c1.button(f"🔍 {e_title}", key=f"rev_{e_id}"):
                                 st.session_state.taking_exam = {'id': e_id, 'title': e_title, 'time_limit': e_time, 'questions': json.loads(e_json)}
                                 st.session_state.review_mode = True
@@ -700,7 +700,7 @@ def main():
                                 st.rerun()
                             c2.success(f"Đã nộp: {done[0]} điểm")
                         else:
-                            # Đã loại bỏ dòng chữ "Thời gian 90 phút"
+                            # Ẩn chữ "Thời gian..."
                             c1.markdown(f"**{e_title}**")
                             if c2.button("▶️ LÀM BÀI", key=f"btn_{e_id}"):
                                 st.session_state.taking_exam = {'id': e_id, 'title': e_title, 'time_limit': e_time, 'questions': json.loads(e_json)}
