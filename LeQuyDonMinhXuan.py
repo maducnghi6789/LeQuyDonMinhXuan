@@ -51,6 +51,7 @@ def clean_ai_json(json_str):
     if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
         res = res[start_idx:end_idx+1]
     
+    # Gọt sạch dấu phẩy thừa do AI hay sinh lỗi
     res = re.sub(r',\s*]', ']', res)
     res = re.sub(r',\s*}', '}', res)
     return res
@@ -98,9 +99,14 @@ def init_db():
 
     c.execute('''CREATE TABLE IF NOT EXISTS mandatory_results (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, exam_id INTEGER, score REAL, user_answers_json TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
     
+    # BẢO MẬT & SỬA LỖI ĐĂNG NHẬP: Ép hệ thống luôn ghi nhận thông tin admin chuẩn
     admin_exists = conn.execute("SELECT 1 FROM users WHERE username=?", (ADMIN_CORE_EMAIL,)).fetchone()
     if not admin_exists:
         c.execute("INSERT INTO users (username, password, role, fullname) VALUES (?, ?, 'core_admin', 'Quản trị mạng')", (ADMIN_CORE_EMAIL, ADMIN_CORE_PW))
+    else:
+        # Dòng này sẽ chữa lành CSDL của bạn, ghi đè chữ "admin123" chuẩn vào để bạn đăng nhập được
+        c.execute("UPDATE users SET password=?, role='core_admin', fullname='Quản trị mạng' WHERE username=?", (ADMIN_CORE_PW, ADMIN_CORE_EMAIL))
+        
     conn.commit(); conn.close()
 
 def log_deletion(deleted_by, entity_type, entity_name, reason):
@@ -146,7 +152,7 @@ def account_manager_ui(target_role, specific_class=None):
         st.download_button(
             label="⬇️ XUẤT DANH SÁCH (EXCEL)", 
             data=out.getvalue(), 
-            file_name=f"Danh_sach_{target_role}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            file_name=f"Danh_sach_{target_role}_{datetime.now(VN_TZ).strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         st.divider()
@@ -157,6 +163,7 @@ def account_manager_ui(target_role, specific_class=None):
             with st.form(f"form_{sel_u}"):
                 c1, c2 = st.columns(2)
                 f_name = c1.text_input("Họ và Tên", value=u_data['fullname'])
+                # Hiển thị mật khẩu rõ ràng
                 f_pass = c2.text_input("🔑 Mật khẩu", value=u_data['password']) 
                 f_cls = c1.text_input("Lớp", value=u_data['class_name'] if u_data['class_name'] else "")
                 f_sch = c2.text_input("Trường", value=u_data.get('school', '') if pd.notna(u_data.get('school')) else "")
@@ -245,7 +252,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (TỐI ƯU MA TRẬN)
+# 4. MODULE AI KHẢO THÍ (CHỐNG LỖI 404 & JSON)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -291,7 +298,7 @@ def parse_exam_with_ai(raw_text, api_key):
     return safe_ai_generate(prompt, api_key)
 
 def generate_free_practice_hybrid(api_key):
-    """CÔNG NGHỆ HYBRID 25/15 THEO MA TRẬN: Lấy 25 câu kho APP, AI sinh 15 câu bám sát Ma Trận."""
+    """CÔNG NGHỆ HYBRID 25/15 THEO MA TRẬN"""
     conn = get_conn()
     exams = conn.execute("SELECT questions_json FROM mandatory_exams").fetchall()
     conn.close()
@@ -305,11 +312,10 @@ def generate_free_practice_hybrid(api_key):
     
     valid_local = [q for q in local_bank if 'q' in q and 'options' in q and 'ans' in q]
     
-    # BƯỚC 1: Lấy 25 câu ngẫu nhiên từ CSDL
+    # Lấy 25 câu ngẫu nhiên từ CSDL
     num_app_qs = min(25, len(valid_local))
     app_qs = random.sample(valid_local, num_app_qs) if num_app_qs > 0 else []
     
-    # BƯỚC 2: Tính toán số câu AI cần sinh (Thường là 15 câu)
     num_ai_qs = 40 - num_app_qs
     ai_qs = []
     
@@ -501,7 +507,7 @@ def main():
                     conn = get_conn()
                     res = conn.execute("SELECT role, fullname, class_name, managed_classes, password FROM users WHERE username=?", (u,)).fetchone()
                     conn.close()
-                    # Mật khẩu dạng Plain Text
+                    # Xác thực Mật khẩu thường (Plain Text)
                     if res and p == res[4]:
                         st.session_state.current_user = u
                         st.session_state.role, st.session_state.fullname, st.session_state.class_name, st.session_state.managed = res[0], res[1], res[2], res[3]
