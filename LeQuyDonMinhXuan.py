@@ -43,16 +43,23 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
-    """VÁ LỖI JSON: Cắt đúng mảng và tự động xóa dấu phẩy thừa (Trailing Comma) của AI"""
+    """VÁ LỖI JSON CỰC MẠNH: Tự động sửa lỗi cú pháp do AI sinh ra"""
     res = json_str.strip()
+    
+    # 1. Cắt đúng mảng (Loại bỏ văn bản chào hỏi thừa)
     start_idx = res.find('[')
     end_idx = res.rfind(']')
-    
     if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
         res = res[start_idx:end_idx+1]
     
+    # 2. Xóa dấu phẩy thừa ở cuối (Trailing Comma)
     res = re.sub(r',\s*]', ']', res)
     res = re.sub(r',\s*}', '}', res)
+    
+    # 3. Ép an toàn dấu backslash (\) của LaTeX (Tránh lỗi invalid escape sequence)
+    # Tìm các dấu \ không đi kèm ký tự điều khiển JSON hợp lệ và bọc nó thành \\
+    res = re.sub(r'\\(?!["\\/bfnrt])', r'\\\\', res)
+    
     return res
 
 def format_math(text):
@@ -104,9 +111,7 @@ def init_db():
     else:
         c.execute("UPDATE users SET password=?, role='core_admin', fullname='Quản trị mạng' WHERE username=?", (ADMIN_CORE_PW, ADMIN_CORE_EMAIL))
     
-    # --- THUỐC GIẢI: Quét và tẩy rửa các mật khẩu bị mã hóa bcrypt cũ ---
     c.execute("UPDATE users SET password='123@' WHERE password LIKE '$2b$12$%' AND role='student'")
-    
     conn.commit(); conn.close()
 
 def log_deletion(deleted_by, entity_type, entity_name, reason):
@@ -249,7 +254,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ
+# 4. MODULE AI KHẢO THÍ (CHỐNG LỖI 404 & JSON HOÀN HẢO)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -259,36 +264,42 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Trái tim AI: Đảo model, chống Crash JSON"""
+    """Trái tim AI: TỰ ĐỘNG PHỤC HỒI KHI LỖI JSON, ĐẢO MODEL"""
     genai.configure(api_key=api_key)
     model_names = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-pro']
+    
     last_err = ""
     for name in model_names:
-        try:
-            model = genai.GenerativeModel(name)
-            response = model.generate_content(prompt)
+        # VÒNG LẶP AUTO-RETRY: Cho AI 2 cơ hội sửa sai cú pháp JSON trước khi đổi model
+        for attempt in range(2):
             try:
-                return json.loads(clean_ai_json(response.text))
-            except json.JSONDecodeError:
-                return "LỖI AI: Định dạng JSON trả về không hợp lệ do AI sinh lỗi cú pháp."
-        except Exception as e:
-            last_err = str(e)
-            continue
-            
-    if "429" in last_err or "Quota" in last_err:
-        return "LỖI HẠN NGẠCH (Quota 429): Quá tải yêu cầu. Hãy dùng API trả phí hoặc chờ 1 phút."
-    elif "404" in last_err:
-        return "LỖI KẾT NỐI (404): Không tìm thấy mô hình AI tương thích. Vui lòng kiểm tra lại API Key Google."
-    else:
-        return f"Lỗi AI không xác định: {last_err}"
+                model = genai.GenerativeModel(name)
+                response = model.generate_content(prompt)
+                try:
+                    cleaned_text = clean_ai_json(response.text)
+                    return json.loads(cleaned_text)
+                except json.JSONDecodeError as e:
+                    if attempt == 1: break # Hết cơ hội, đổi model khác
+                    time.sleep(1) # Chờ 1s rồi bắt AI sinh lại
+                    continue
+            except Exception as e:
+                last_err = str(e)
+                if "429" in last_err or "Quota" in last_err:
+                    return "LỖI HẠN NGẠCH (Quota 429): Quá tải yêu cầu. Hãy dùng API trả phí hoặc chờ 1 phút."
+                elif "404" in last_err:
+                    return "LỖI KẾT NỐI (404): Không tìm thấy mô hình AI tương thích. Vui lòng kiểm tra lại API Key."
+                break # Lỗi mạng thì đổi model ngay
+                
+    return "LỖI AI TRẦM TRỌNG: Trí tuệ nhân tạo liên tục trả về sai cấu trúc JSON. Vui lòng thử bấm tạo lại đề."
 
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Bạn là giáo viên Toán. Biên tập văn bản PDF dưới đây thành chuẩn đúng 40 câu trắc nghiệm.
     YÊU CẦU: Trả về mảng JSON array: [{{"q": "Câu hỏi", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "Hướng dẫn..."}}]
-    LƯU Ý KỸ THUẬT QUAN TRỌNG: 
-    1. TẤT CẢ công thức Toán học PHẢI được bọc trong dấu $ (ví dụ: $\\sqrt{{2}}$). Escape backslash (\\\\frac).
-    2. KHÔNG dùng dấu nháy kép (") bên trong nội dung chữ, hãy dùng nháy đơn (') để tránh lỗi JSON. Đảm bảo không có dấu phẩy thừa ở cuối.
-    3. TUYỆT ĐỐI CHỈ TRẢ VỀ MẢNG JSON TỪ [ ĐẾN ].
+    LƯU Ý KỸ THUẬT SINH TỒN (BẮT BUỘC): 
+    1. TẤT CẢ công thức Toán học PHẢI được bọc trong dấu $ (ví dụ: $\\sqrt{{2}}$). 
+    2. CÁC DẤU GẠCH CHÉO NGƯỢC (\\) CỦA LATEX PHẢI ĐƯỢC NHÂN ĐÔI (ví dụ: \\\\frac).
+    3. TUYỆT ĐỐI KHÔNG dùng dấu nháy kép (") bên trong nội dung câu hỏi/đáp án. Hãy dùng nháy đơn (').
+    4. TUYỆT ĐỐI CHỈ TRẢ VỀ MẢNG JSON TỪ [ ĐẾN ]. Không chèn thêm bất kỳ văn bản nào khác.
     VĂN BẢN ĐỀ THI:
     {raw_text}
     """
@@ -320,24 +331,25 @@ def generate_free_practice_hybrid(api_key):
         if app_qs:
             app_context = "\n".join([f"- {q['q'][:100]}..." for q in app_qs])
         
-        prompt = f"""Bạn là Thầy giáo ra đề thi Toán cấp THCS (Tập trung Toán 9). 
-        Tôi đã có sẵn {num_app_qs} câu hỏi. Hãy sáng tác thêm ĐÚNG {num_ai_qs} câu trắc nghiệm hoàn toàn mới để ghép thành một đề thi ĐÚNG MA TRẬN chuẩn.
+        prompt = f"""Bạn là Thầy giáo ra đề thi Toán THCS. 
+        Tôi đã có sẵn {num_app_qs} câu hỏi. Hãy sáng tác thêm ĐÚNG {num_ai_qs} câu trắc nghiệm hoàn toàn mới để ghép thành một đề thi ĐÚNG MA TRẬN.
         
         YÊU CẦU CHUYÊN MÔN (BÁM SÁT MA TRẬN):
-        1. KHÔNG trùng lặp dạng toán, giá trị số hoặc ngữ cảnh với các câu đã có: {app_context}
-        2. Phân bổ {num_ai_qs} câu này theo Ma trận 4 mức độ nhận thức:
-           - Khoảng 40% số câu Cơ bản (Nhận biết & Thông hiểu).
-           - Khoảng 40% số câu Khá (Vận dụng).
+        1. KHÔNG trùng lặp dạng toán hay ngữ cảnh với các câu đã có: {app_context}
+        2. Phân bổ {num_ai_qs} câu này theo Ma trận:
+           - Khoảng 40% Cơ bản (Nhận biết & Thông hiểu).
+           - Khoảng 40% Khá (Vận dụng).
            - BẮT BUỘC ĐÚNG 02 CÂU Vận dụng cao (Cực khó/Đề thi HSG).
         
         ĐỊNH DẠNG JSON BẮT BUỘC:
-        [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn giải chi tiết"}}]
+        [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn..."}}]
         
-        LƯU Ý KỸ THUẬT TRÁNH LỖI (QUAN TRỌNG NHẤT):
-        1. KHÔNG dùng dấu nháy kép (") bên trong nội dung các chuỗi (Hãy dùng nháy đơn ').
-        2. ĐẢM BẢO KHÔNG DƯ DẤU PHẨY `,` Ở CUỐI MẢNG HOẶC CUỐI CỦA MỖI OBJECT.
-        3. MỌI biểu thức Toán, số liệu ĐỀU PHẢI ĐƯỢC BỌC TRONG dấu $ (VD: $\\sqrt{{2}}$, $\\frac{{1}}{{2}}$).
-        4. CHỈ TRẢ VỀ DỮ LIỆU BẮT ĐẦU BẰNG [ VÀ KẾT THÚC BẰNG ].
+        LƯU Ý KỸ THUẬT SINH TỒN (NẾU VI PHẠM SẼ BỊ LỖI PHẦN MỀM):
+        1. TUYỆT ĐỐI KHÔNG dùng dấu nháy kép (") bên trong nội dung câu hỏi/đáp án. HÃY DÙNG DẤU NHÁY ĐƠN (').
+        2. MỌI ký hiệu LaTeX chứa dấu gạch chéo ngược (\\) PHẢI ĐƯỢC NHÂN ĐÔI (ví dụ: \\\\sqrt{{2}}, \\\\frac{{1}}{{2}}).
+        3. MỌI biểu thức Toán, số liệu ĐỀU PHẢI ĐƯỢC BỌC TRONG dấu $.
+        4. KHÔNG để dư dấu phẩy (,) ở cuối mảng hoặc cuối Object.
+        5. CHỈ XUẤT RA DỮ LIỆU JSON, KHÔNG CÓ BẤT KỲ VĂN BẢN NÀO BÊN NGOÀI NGOẶC VUÔNG [ ].
         """
         ai_res = safe_ai_generate(prompt, api_key)
         
@@ -392,7 +404,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
                 st.markdown(f"**Bạn đã chọn:** {formatted_choice}")
                 
                 if not is_correct: st.error("Câu trả lời chưa chính xác.")
-                st.info(f"**Hướng dẫn (Brief Solution):**\n{format_math(q.get('exp', 'Đang cập nhật...'))}")
+                st.info(f"**Hướng dẫn:**\n{format_math(q.get('exp', 'Đang cập nhật...'))}")
                 
         if st.button("⬅️ Trở về danh sách đề"):
             st.session_state.show_results = False
