@@ -253,7 +253,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (FIX CỨNG MODEL ỔN ĐỊNH)
+# 4. MODULE AI KHẢO THÍ (CHỐNG LỖI 404 CỰC MẠNH)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -263,14 +263,18 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Sử dụng duy nhất model 1.5-flash để loại bỏ triệt để lỗi 404"""
-    genai.configure(api_key=api_key)
-    # Fix cứng model ổn định nhất, không thử các model không tồn tại
-    model_names = ['gemini-1.5-flash'] 
+    """Trái tim AI: Vòng xoáy model bất tử, gọt sạch khoảng trắng API Key"""
+    if not api_key or not api_key.strip():
+        return "LỖI HỆ THỐNG: API Key rỗng. Vui lòng nạp API Key."
+        
+    genai.configure(api_key=api_key.strip())
+    
+    # DANH SÁCH BẤT TỬ: Từ model xịn nhất đến model cũ nhất (đảm bảo 100% gọi được)
+    model_names = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'] 
     
     last_err = ""
     for name in model_names:
-        for attempt in range(2): # Cho phép retry nhanh 1 lần nếu mạng lag
+        for attempt in range(2): # Cho phép retry nhanh 1 lần nếu JSON lỡ gãy
             try:
                 model = genai.GenerativeModel(name)
                 response = model.generate_content(prompt)
@@ -282,18 +286,17 @@ def safe_ai_generate(prompt, api_key):
                 try:
                     return json.loads(cleaned_text)
                 except json.JSONDecodeError:
-                    if attempt == 1: break # Sang model khác
+                    if attempt == 1: break # Dừng để đổi model khác nếu vẫn lỗi
                     time.sleep(0.5)
                     continue
             except Exception as e:
                 last_err = str(e)
                 if "429" in last_err or "Quota" in last_err:
                     return "LỖI HẠN NGẠCH (Quota 429): Quá tải yêu cầu. Hãy chờ 1 phút hoặc kiểm tra hạn mức API."
-                elif "404" in last_err:
-                    return "LỖI KẾT NỐI (404): API Key của bạn không hợp lệ hoặc không có quyền truy cập. Vui lòng tạo API Key mới."
+                # Nếu lỗi 404/403, break vòng lặp attempt để nhảy ngay sang model cũ hơn trong danh sách
                 break 
                 
-    return f"LỖI AI: Hệ thống không thể sinh cấu trúc JSON hợp lệ. Vui lòng thử lại. (Chi tiết: {last_err})"
+    return f"LỖI KẾT NỐI AI: Không có mô hình nào khả dụng hoặc API Key bị Google chặn. (Chi tiết: {last_err})"
 
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Bạn là giáo viên Toán. Biên tập văn bản PDF dưới đây thành chuẩn đúng 40 câu trắc nghiệm.
@@ -371,7 +374,6 @@ def render_exam_content(text):
 # ==========================================
 def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_ans_data=None):
     
-    # --- CHẾ ĐỘ XEM LẠI BÀI ---
     if is_review and user_ans_data:
         st.markdown(f"### 🔍 XEM LẠI BÀI: {exam_data.get('title')}")
         questions = exam_data['questions']
@@ -415,7 +417,6 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
             st.rerun()
         return
 
-    # --- CHẾ ĐỘ LÀM BÀI MỚI ---
     st.markdown(f"### 📝 LÀM BÀI: {exam_data.get('title', 'Luyện đề tự do')}")
     time_limit = exam_data.get('time_limit', 90)
     questions = exam_data['questions']
@@ -532,6 +533,7 @@ def main():
                 new_key = st.text_input("Gemini API Key:", value=api_key, type="password")
                 if st.button("💾 Lưu API"):
                     conn = get_conn()
+                    # Lọc khoảng trắng tự động khi lưu
                     conn.execute("INSERT OR REPLACE INTO system_settings VALUES ('GEMINI_API_KEY', ?)", (new_key.strip(),))
                     conn.commit(); conn.close(); st.success("✅ Đã lưu!")
             st.markdown("---")
@@ -732,7 +734,7 @@ def main():
             st.header("🚀 Luyện đề tự do") 
             if st.session_state.get('taking_free_exam') is None:
                 if st.button("🪄 TẠO ĐỀ", type="primary"): 
-                    if not api_key: st.error("❌ Hệ thống chưa kết nối AI.")
+                    if not api_key: st.error("❌ Hệ thống chưa kết nối AI. Vui lòng liên hệ Admin nạp API Key.")
                     else:
                         with st.spinner("🤖 Đang kết nối Trí tuệ Nhân tạo để sinh đề theo ma trận... Xin chờ (hoặc thử lại nếu máy chủ quá tải)."):
                             free_exam = generate_free_practice_hybrid(api_key)
