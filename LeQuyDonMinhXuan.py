@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME AUTO-MODEL) ---
+# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME HOÀN THIỆN) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -43,7 +43,7 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
-    """VÁ LỖI JSON TỐC ĐỘ CAO: Lọc nhiễu thông minh"""
+    """VÁ LỖI JSON TỐC ĐỘ CAO (Dùng làm Fallback)"""
     res = json_str.strip()
     start_idx = res.find('[')
     end_idx = res.rfind(']')
@@ -248,7 +248,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (CÔNG NGHỆ AUTO-DISCOVERY CHỐNG 404)
+# 4. MODULE AI KHẢO THÍ (CÔNG NGHỆ NATIVE JSON + AUTO-DISCOVERY)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -258,71 +258,75 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Trái tim AI: TỰ ĐỘNG HỎI GOOGLE CÁC MODEL KHẢ DỤNG - Vĩnh biệt lỗi 404"""
+    """Trái tim AI: TỰ ĐỘNG DÒ TÌM MODEL VÀ ÉP NATIVE JSON"""
     if not api_key or not api_key.strip():
         return "LỖI HỆ THỐNG: API Key rỗng. Vui lòng nạp API Key."
         
     genai.configure(api_key=api_key.strip())
     
-    # BƯỚC ĐỘT PHÁ: Hỏi trực tiếp Google xem tài khoản này được dùng những model nào
     try:
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
     except Exception as e:
-        return f"LỖI API KEY: Không thể kết nối với Google. API Key của bạn bị sai, đã hết hạn hoặc bị Google khóa. ({str(e)})"
+        return f"LỖI API KEY: Không thể kết nối với Google. ({str(e)})"
         
     if not available_models:
         return "LỖI TÀI KHOẢN: API Key của bạn không được cấp quyền sử dụng bất kỳ mô hình AI nào."
         
-    # Ưu tiên lấy các model dòng 'flash' vì nó siêu tốc độ, sau đó mới đến các model khác
     flash_models = [m for m in available_models if 'flash' in m.lower()]
     other_models = [m for m in available_models if 'flash' not in m.lower()]
     model_names = flash_models + other_models
 
     last_err = ""
-    # Lần lượt thử các model mà Google vừa báo là hợp lệ
     for model_name in model_names:
-        for attempt in range(2): # Cho phép retry 1 lần nếu JSON lỡ gãy
+        for attempt in range(2): 
             try:
-                # Xóa chữ 'models/' ở đầu để tên model chuẩn xác nhất
                 clean_name = model_name.replace('models/', '')
                 model = genai.GenerativeModel(clean_name)
-                response = model.generate_content(prompt)
                 
-                # Tiền xử lý Bypass Token: Trả lại dấu \ cho LaTeX trước khi đọc JSON
+                # ÉP AI TRẢ VỀ CHUẨN JSON (NATIVE JSON MODE TỪ BẢN REACT)
+                response = model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        response_mime_type="application/json"
+                    )
+                )
+                
                 raw_response = response.text.replace('TEX_', '\\')
-                cleaned_text = clean_ai_json(raw_response)
                 
                 try:
-                    return json.loads(cleaned_text)
+                    return json.loads(raw_response)
                 except json.JSONDecodeError:
-                    if attempt == 1: break # Sang model khác
-                    time.sleep(0.5)
-                    continue
+                    # Fallback dùng máy quét regex nếu Native JSON vẫn bị xước
+                    cleaned_text = clean_ai_json(raw_response)
+                    try:
+                        return json.loads(cleaned_text)
+                    except:
+                        if attempt == 1: break 
+                        time.sleep(0.5)
+                        continue
             except Exception as e:
                 last_err = str(e)
                 if "429" in last_err or "Quota" in last_err:
-                    if attempt == 1: return "LỖI HẠN NGẠCH (Quota 429): Quá tải yêu cầu. Hãy chờ 1 phút hoặc kiểm tra hạn mức API."
+                    if attempt == 1: return "LỖI HẠN NGẠCH (Quota 429): Quá tải yêu cầu. Hãy chờ 1 phút."
                     time.sleep(2)
                     continue
-                # Nếu bị lỗi khác (VD API không ổn định), nhảy sang model tiếp theo
                 break 
                 
     return f"LỖI HỆ THỐNG AI: Đã thử toàn bộ mô hình được phép nhưng vẫn thất bại. (Chi tiết: {last_err})"
 
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Bạn là giáo viên Toán. Biên tập văn bản PDF dưới đây thành chuẩn đúng 40 câu trắc nghiệm.
-    YÊU CẦU: Trả về mảng JSON array: [{{"q": "Câu hỏi", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "Hướng dẫn..."}}]
+    YÊU CẦU: Trả về một MẢNG JSON các Object với key chuẩn: [{{"q": "Câu hỏi", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "Hướng dẫn"}}]
     LƯU Ý KỸ THUẬT QUAN TRỌNG: 
     1. TUYỆT ĐỐI KHÔNG SỬ DỤNG DẤU GẠCH CHÉO NGƯỢC (\). BẤT KỲ CHỖ NÀO CẦN GẠCH CHÉO NGƯỢC HÃY THAY BẰNG CHỮ 'TEX_'. (Ví dụ thay vì viết \\sqrt thì viết TEX_sqrt).
-    2. KHÔNG dùng dấu nháy kép (") bên trong nội dung chữ, hãy dùng nháy đơn (') để tránh lỗi JSON. Đảm bảo không có dấu phẩy thừa ở cuối.
-    3. TUYỆT ĐỐI CHỈ TRẢ VỀ MẢNG JSON TỪ [ ĐẾN ].
+    2. KHÔNG dùng dấu nháy kép (") bên trong nội dung chữ, hãy dùng nháy đơn (') để tránh lỗi JSON.
     VĂN BẢN ĐỀ THI:
     {raw_text}
     """
     return safe_ai_generate(prompt, api_key)
 
 def generate_free_practice_hybrid(api_key):
-    """CÔNG NGHỆ HYBRID 25/15 SIÊU TỐC THEO MA TRẬN"""
+    """CÔNG NGHỆ HYBRID 25/15 SIÊU TỐC THEO MA TRẬN TỪ REACT"""
     conn = get_conn()
     exams = conn.execute("SELECT questions_json FROM mandatory_exams").fetchall()
     conn.close()
@@ -348,21 +352,29 @@ def generate_free_practice_hybrid(api_key):
             app_context = "\n".join([f"- {q['q'][:100]}..." for q in app_qs])
         
         prompt = f"""Bạn là Thầy giáo ra đề thi Toán cấp THCS. 
-        Sáng tác thêm ĐÚNG {num_ai_qs} câu trắc nghiệm mới tinh. Không trùng với: {app_context}
+        Sáng tác thêm ĐÚNG {num_ai_qs} câu trắc nghiệm mới tinh. Không trùng lặp với: {app_context}
         
-        MA TRẬN:
-        - ~40% Cơ bản (Nhận biết & Thông hiểu).
-        - ~40% Khá (Vận dụng).
+        TỔNG QUAN MA TRẬN 8 CHỦ ĐỀ CHUẨN:
+        1. Căn thức: NB, TH, VD.
+        2. Hàm số y=ax^2: NB, TH, VD.
+        3. Phương trình & Hệ phương trình: NB, TH, VD, VDC.
+        4. Bất phương trình: NB, TH, VDC.
+        5. Hệ thức lượng tam giác vuông: NB, TH, VD.
+        6. Đường tròn: NB, TH, VDC.
+        7. Hình khối thực tiễn: NB, TH, VD.
+        8. Thống kê & Xác suất: NB, TH, VD, VDC.
+        
+        YÊU CẦU CHO {num_ai_qs} CÂU NÀY:
+        - Bám sát ma trận trên. Rải đều các mức độ Nhận biết, Thông hiểu.
         - BẮT BUỘC ĐÚNG 02 CÂU Vận dụng cao (Cực khó/Đề thi HSG).
         
         ĐỊNH DẠNG JSON BẮT BUỘC:
-        [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Giải..."}}]
+        Trả về một mảng JSON các Object có dạng: [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Giải..."}}]
         
-        LUẬT SINH TỒN (PHẢI TUÂN THỦ 100% ĐỂ CODE KHÔNG BỊ CRASH):
+        LUẬT SINH TỒN (PHẢI TUÂN THỦ ĐỂ TRÁNH LỖI):
         1. KHÔNG dùng nháy kép (") bên trong chuỗi, HÃY dùng nháy đơn (').
-        2. TUYỆT ĐỐI KHÔNG DÙNG DẤU GẠCH CHÉO NGƯỢC (\). BẤT KỲ CHỖ NÀO CẦN LATEX HÃY THAY BẰNG 'TEX_'. (Ví dụ: TEX_sqrt{{2}}, TEX_frac{{1}}{{2}}).
+        2. TUYỆT ĐỐI KHÔNG DÙNG DẤU GẠCH CHÉO NGƯỢC (\). Thay LATEX BẰNG 'TEX_'. (Ví dụ: TEX_sqrt{{2}}, TEX_frac{{1}}{{2}}).
         3. MỌI biểu thức Toán ĐỀU PHẢI BỌC TRONG dấu $. (VD: $TEX_sqrt{{2}}$)
-        4. CHỈ XUẤT RA DỮ LIỆU JSON. KHÔNG NÓI CHUYỆN.
         """
         ai_res = safe_ai_generate(prompt, api_key)
         
