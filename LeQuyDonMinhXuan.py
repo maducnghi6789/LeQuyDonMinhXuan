@@ -253,7 +253,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (CHỐNG LỖI 404 & JSON)
+# 4. MODULE AI KHẢO THÍ (FIX CỨNG MODEL ỔN ĐỊNH)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -263,10 +263,10 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Trái tim AI: Thuật toán Bypass Ký tự, Đảm bảo Tốc độ tối đa, Không dính Retry Loop"""
+    """Sử dụng duy nhất model 1.5-flash để loại bỏ triệt để lỗi 404"""
     genai.configure(api_key=api_key)
-    # LOẠI BỎ MODEL CHẬM, Chỉ dùng Flash thế hệ mới nhất
-    model_names = ['gemini-1.5-flash', 'gemini-2.0-flash'] 
+    # Fix cứng model ổn định nhất, không thử các model không tồn tại
+    model_names = ['gemini-1.5-flash'] 
     
     last_err = ""
     for name in model_names:
@@ -288,12 +288,12 @@ def safe_ai_generate(prompt, api_key):
             except Exception as e:
                 last_err = str(e)
                 if "429" in last_err or "Quota" in last_err:
-                    return "LỖI HẠN NGẠCH (Quota 429): Quá tải yêu cầu. Hãy dùng API trả phí hoặc chờ 1 phút."
+                    return "LỖI HẠN NGẠCH (Quota 429): Quá tải yêu cầu. Hãy chờ 1 phút hoặc kiểm tra hạn mức API."
                 elif "404" in last_err:
-                    return "LỖI KẾT NỐI (404): Không tìm thấy mô hình AI tương thích. Vui lòng kiểm tra lại API Key Google."
-                break # Lỗi mạng thì đổi model ngay
+                    return "LỖI KẾT NỐI (404): API Key của bạn không hợp lệ hoặc không có quyền truy cập. Vui lòng tạo API Key mới."
+                break 
                 
-    return "LỖI AI TRẦM TRỌNG: Trí tuệ nhân tạo không thể sinh cấu trúc phù hợp. Vui lòng bấm tạo lại đề."
+    return f"LỖI AI: Hệ thống không thể sinh cấu trúc JSON hợp lệ. Vui lòng thử lại. (Chi tiết: {last_err})"
 
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Bạn là giáo viên Toán. Biên tập văn bản PDF dưới đây thành chuẩn đúng 40 câu trắc nghiệm.
@@ -333,7 +333,6 @@ def generate_free_practice_hybrid(api_key):
         if app_qs:
             app_context = "\n".join([f"- {q['q'][:100]}..." for q in app_qs])
         
-        # PROMPT "HACK" TỐC ĐỘ: Không bắt AI chạy escape JSON nữa
         prompt = f"""Bạn là Thầy giáo ra đề thi Toán cấp THCS. 
         Sáng tác thêm ĐÚNG {num_ai_qs} câu trắc nghiệm mới tinh. Không trùng với: {app_context}
         
