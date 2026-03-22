@@ -68,10 +68,11 @@ def clean_ai_json(json_str):
     return res # Trả về gốc nếu không tìm thấy cấu trúc mảng
 
 def format_math(text):
-    """Máy sấy công thức: Khắc phục lỗi hiển thị LaTeX"""
+    """Máy sấy công thức: Khắc phục lỗi hiển thị LaTeX (Chuyển nháy ngược thành $)"""
     if not isinstance(text, str): return str(text)
     bt = chr(96)
-    text = re.sub(bt + r'([^' + bt + r']*\\[a-zA-Z]+[^' + bt + r']*)' + bt, r'$\1$', text)
+    # Tự động chuyển đổi các công thức bị AI bọc bằng nháy ngược (`) sang định dạng ($) chuẩn của Streamlit
+    text = re.sub(bt + r'(.*?)' + bt, r'$\1$', text)
     text = text.replace('\\\\', '\\')
     return text
 
@@ -272,7 +273,7 @@ def safe_ai_generate(prompt, api_key):
         try:
             model = genai.GenerativeModel(name)
             response = model.generate_content(prompt)
-            # FIX (5) & MỚI: AI JSON dễ crash, đã nâng cấp hàm clean_ai_json để tự bóc tách
+            # FIX (5): AI JSON dễ crash, đã nâng cấp hàm clean_ai_json để tự bóc tách
             try:
                 return json.loads(clean_ai_json(response.text))
             except json.JSONDecodeError:
@@ -291,15 +292,17 @@ def safe_ai_generate(prompt, api_key):
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Bạn là giáo viên Toán. Biên tập văn bản PDF dưới đây thành chuẩn đúng 40 câu trắc nghiệm.
     YÊU CẦU: Trả về mảng JSON array: [{{"q": "Câu hỏi", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "Hướng dẫn..."}}]
-    LƯU Ý KỸ THUẬT: TẤT CẢ công thức Toán học PHẢI được bọc trong dấu $ (ví dụ: $\\sqrt{{2}}$). Escape backslash (\\\\frac).
-    TUYỆT ĐỐI CHỈ TRẢ VỀ JSON, KHÔNG THÊM BẤT CỨ VĂN BẢN NÀO KHÁC.
+    LƯU Ý KỸ THUẬT QUAN TRỌNG: 
+    1. TẤT CẢ công thức Toán học PHẢI được bọc trong dấu $ (ví dụ: $\\sqrt{{2}}$). Escape backslash (\\\\frac).
+    2. KHÔNG dùng dấu nháy kép (") bên trong nội dung chữ, hãy dùng nháy đơn (') để tránh lỗi JSON.
+    3. TUYỆT ĐỐI CHỈ TRẢ VỀ JSON, KHÔNG THÊM BẤT CỨ VĂN BẢN CHÀO HỎI NÀO KHÁC.
     VĂN BẢN ĐỀ THI:
     {raw_text}
     """
     return safe_ai_generate(prompt, api_key)
 
 def generate_free_practice_hybrid(api_key):
-    """CÔNG NGHỆ HYBRID: Lấy 20 câu kho APP, sinh 20 câu AI, lắc đều."""
+    """CÔNG NGHỆ HYBRID 25/15: Lấy 25 câu kho APP, sinh 15 câu AI, lắc đều."""
     conn = get_conn()
     exams = conn.execute("SELECT questions_json FROM mandatory_exams").fetchall()
     conn.close()
@@ -313,23 +316,33 @@ def generate_free_practice_hybrid(api_key):
     
     valid_local = [q for q in local_bank if 'q' in q and 'options' in q and 'ans' in q]
     
-    num_app_qs = min(20, len(valid_local))
-    # FIX (10): random.sample crash khi list rỗng
+    # YÊU CẦU MỚI: Lấy 25 câu từ DB
+    num_app_qs = min(25, len(valid_local))
     app_qs = random.sample(valid_local, num_app_qs) if num_app_qs > 0 else []
     
+    # AI chỉ sinh phần còn lại (Thường là 15 câu)
     num_ai_qs = 40 - num_app_qs
     ai_qs = []
     
     if num_ai_qs > 0:
         app_context = ""
         if app_qs:
+            # Lấy ngữ cảnh để AI né tránh trùng lặp
             app_context = "\n".join([f"- {q['q'][:100]}..." for q in app_qs])
         
-        prompt = f"""Bạn là chuyên gia Toán. Sáng tác thêm ĐÚNG {num_ai_qs} câu trắc nghiệm để hoàn thiện 40 câu.
-        Tránh trùng nội dung: {app_context}
-        JSON BẮT BUỘC: [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn..."}}]. 
-        LƯU Ý KỸ THUẬT: TẤT CẢ công thức Toán học PHẢI được bọc trong dấu $ (ví dụ: $\\sqrt{{2}}$). Escape backslash (\\\\frac).
-        TUYỆT ĐỐI CHỈ TRẢ VỀ DỮ LIỆU JSON, KHÔNG CHÀO HỎI HAY GIẢI THÍCH THÊM.
+        prompt = f"""Bạn là chuyên gia ra đề thi Toán. Sáng tác thêm ĐÚNG {num_ai_qs} câu trắc nghiệm Toán THCS hoàn toàn mới.
+        YÊU CẦU CHUYÊN MÔN:
+        - Tuyệt đối không trùng lặp dạng toán, giá trị số hoặc ngữ cảnh với các câu sau: {app_context}
+        - TRONG {num_ai_qs} CÂU NÀY, BẮT BUỘC PHẢI CÓ 02 CÂU VẬN DỤNG CAO (ĐỘ KHÓ ĐỀ THI HỌC SINH GIỎI THẬT KHÓ), các câu còn lại rải đều mức độ.
+        
+        ĐỊNH DẠNG JSON BẮT BUỘC:
+        [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn giải chi tiết"}}]
+        
+        LƯU Ý KỸ THUẬT TRÁNH LỖI (QUAN TRỌNG):
+        1. KHÔNG dùng dấu nháy kép (") bên trong nội dung chữ, hãy dùng nháy đơn (') để không làm hỏng cấu trúc JSON.
+        2. MỌI biểu thức Toán, số liệu ĐỀU PHẢI ĐƯỢC BỌC TRONG dấu $ (VD: $\\sqrt{{2}}$, $\\frac{{1}}{{2}}$). KHÔNG dùng ký hiệu ` (backtick).
+        3. Phải escape backslash (viết \\\\sqrt thay vì \\sqrt).
+        4. CHỈ TRẢ VỀ MẢNG JSON, KHÔNG CHÀO HỎI, KHÔNG CẦN GIẢI THÍCH THÊM.
         """
         ai_res = safe_ai_generate(prompt, api_key)
         
@@ -358,7 +371,6 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
         questions = exam_data['questions']
         correct_count = 0
         for i, q in enumerate(questions):
-            # FIX (7): Lỗi index int/string
             ans = user_ans_data.get(str(i)) or user_ans_data.get(i)
             correct_char = q['ans'].strip()[0].upper()
             if ans and str(ans).strip().upper().startswith(correct_char):
@@ -406,7 +418,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
         st.session_state.student_answers = {}
         st.session_state.current_exam_id = exam_id
         st.session_state.show_results = False
-        st.session_state[f"submitted_{exam_id}"] = False # Khởi tạo cờ submit
+        st.session_state[f"submitted_{exam_id}"] = False 
 
     if not st.session_state.get('show_results'):
         timer_html = f"""
@@ -422,7 +434,6 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
                 var m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
                 var s = Math.floor((distance % (1000 * 60)) / 1000);
                 document.getElementById("timer").innerHTML = m + "p " + s + "s ";
-                // FIX (12): Timer JS Fallback
                 if (distance < 0 && !window.submitted) {{
                     window.submitted = true;
                     clearInterval(x);
@@ -444,7 +455,6 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
                 st.divider()
             
             if st.form_submit_button("✅ NỘP BÀI / KẾT THÚC"):
-                # FIX (11): Chống spam submit bài
                 if not st.session_state.get(f"submitted_{exam_id}"):
                     st.session_state[f"submitted_{exam_id}"] = True
                     correct = 0
@@ -687,11 +697,9 @@ def main():
                 if st.session_state.get('taking_exam') is None:
                     for e_id, e_title, e_json, e_time in exams:
                         c1, c2 = st.columns([3, 1])
-                        # Lấy thêm user_answers_json để phục vụ Xem lại bài
                         done = conn.execute("SELECT score, user_answers_json FROM mandatory_results WHERE username=? AND exam_id=?", (st.session_state.current_user, e_id)).fetchone()
                         
                         if done: 
-                            # Thay thế bằng nút bấm Xem lại bài
                             if c1.button(f"🔍 {e_title}", key=f"rev_{e_id}"):
                                 st.session_state.taking_exam = {'id': e_id, 'title': e_title, 'time_limit': e_time, 'questions': json.loads(e_json)}
                                 st.session_state.review_mode = True
@@ -699,7 +707,6 @@ def main():
                                 st.rerun()
                             c2.success(f"Đã nộp: {done[0]} điểm")
                         else:
-                            # Đã loại bỏ dòng chữ "Thời gian..."
                             c1.markdown(f"**{e_title}**")
                             if c2.button("▶️ LÀM BÀI", key=f"btn_{e_id}"):
                                 st.session_state.taking_exam = {'id': e_id, 'title': e_title, 'time_limit': e_time, 'questions': json.loads(e_json)}
@@ -721,7 +728,7 @@ def main():
                 if st.button("🪄 TẠO ĐỀ", type="primary"): 
                     if not api_key: st.error("❌ Hệ thống chưa kết nối AI.")
                     else:
-                        with st.spinner("🤖 Đang quét kho dữ liệu và sinh đề... Xin chờ (hoặc thử lại nếu lỗi 429)."):
+                        with st.spinner("🤖 Đang quét kho dữ liệu và sinh đề... Xin chờ (hoặc thử lại nếu bị nghẽn)."):
                             free_exam = generate_free_practice_hybrid(api_key)
                             if isinstance(free_exam, list): 
                                 st.session_state.taking_free_exam = {'title': "Luyện đề Tự do", 'time_limit': 90, 'questions': free_exam}
