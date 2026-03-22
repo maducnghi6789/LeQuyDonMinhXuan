@@ -248,7 +248,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (NATIVE JSON + TRỰC TIẾP)
+# 4. MODULE AI KHẢO THÍ (NATIVE JSON + 100% AI TRỰC TIẾP)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -730,13 +730,13 @@ def main():
         elif choice == "🚀 Luyện đề tự do":
             st.header("🚀 Luyện đề tự do") 
             if st.session_state.get('taking_free_exam') is None:
-                if st.button("🪄 TẠO ĐỀ AI", type="primary"): 
+                if st.button("🪄 TẠO ĐỀ", type="primary"): 
                     if not api_key: st.error("❌ Hệ thống chưa kết nối AI. Vui lòng liên hệ Admin nạp API Key.")
                     else:
-                        with st.spinner("🤖 AI đang trực tiếp sáng tác 40 câu hỏi theo ma trận... Siêu tốc độ!"):
+                        with st.spinner("Đang tạo đề, xin đợi..."):
                             free_exam = generate_free_practice_ai(api_key)
                             if isinstance(free_exam, list): 
-                                st.session_state.taking_free_exam = {'title': "Luyện đề Tự do (100% AI)", 'time_limit': 90, 'questions': free_exam}
+                                st.session_state.taking_free_exam = {'title': "Luyện đề Tự do", 'time_limit': 90, 'questions': free_exam}
                                 st.rerun()
                             else: 
                                 st.error(f"❌ {free_exam}")
