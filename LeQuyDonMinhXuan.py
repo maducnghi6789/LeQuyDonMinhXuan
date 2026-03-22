@@ -45,14 +45,12 @@ def gen_smart_username(fullname, existing_usernames):
 def clean_ai_json(json_str):
     """VÁ LỖI JSON TỐC ĐỘ CAO: Lọc nhiễu thông minh"""
     res = json_str.strip()
-    # Tìm mảng JSON thực sự
     start_idx = res.find('[')
     end_idx = res.rfind(']')
     
     if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
         res = res[start_idx:end_idx+1]
     
-    # Gọt sạch dấu phẩy thừa do AI lỡ sinh ra
     res = re.sub(r',\s*]', ']', res)
     res = re.sub(r',\s*}', '}', res)
     return res
@@ -61,9 +59,7 @@ def format_math(text):
     """Máy sấy công thức: Sửa lỗi hiển thị LaTeX chuẩn chỉnh"""
     if not isinstance(text, str): return str(text)
     bt = chr(96)
-    # Loại bỏ nháy ngược nếu AI vẫn cố chấp thêm vào
     text = re.sub(bt + r'(.*?)' + bt, r'$\1$', text)
-    # Khôi phục các ký hiệu LaTeX do thuật toán Token Replacement xử lý
     text = text.replace('TEX_', '\\')
     text = text.replace('\\\\', '\\')
     return text
@@ -109,7 +105,6 @@ def init_db():
     else:
         c.execute("UPDATE users SET password=?, role='core_admin', fullname='Quản trị mạng' WHERE username=?", (ADMIN_CORE_PW, ADMIN_CORE_EMAIL))
     
-    # Tẩy rửa pass bị mã hóa bcrypt cũ (nếu còn)
     c.execute("UPDATE users SET password='123@' WHERE password LIKE '$2b$12$%' AND role='student'")
     conn.commit(); conn.close()
 
@@ -253,7 +248,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (CHỐNG LỖI 404 CỰC MẠNH)
+# 4. MODULE AI KHẢO THÍ (CHỐNG 404 VÀ THÔNG MINH)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -263,40 +258,46 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Trái tim AI: Vòng xoáy model bất tử, gọt sạch khoảng trắng API Key"""
+    """Trái tim AI: Chỉ dùng model chuẩn nhất, tự động thử lại khi JSON lỗi hoặc mạng quá tải"""
     if not api_key or not api_key.strip():
         return "LỖI HỆ THỐNG: API Key rỗng. Vui lòng nạp API Key."
         
     genai.configure(api_key=api_key.strip())
     
-    # DANH SÁCH BẤT TỬ: Từ model xịn nhất đến model cũ nhất (đảm bảo 100% gọi được)
-    model_names = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'] 
+    # Bỏ hoàn toàn các model có thể gây 404, chỉ dùng 'gemini-1.5-flash'
+    model_name = 'gemini-1.5-flash'
     
     last_err = ""
-    for name in model_names:
-        for attempt in range(2): # Cho phép retry nhanh 1 lần nếu JSON lỡ gãy
+    # Thử gọi API tối đa 3 lần để chống "nghẽn mạng" (Lỗi 429) và chống AI sinh lỗi JSON
+    for attempt in range(3):
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            
+            # Tiền xử lý Bypass Token: Trả lại dấu \ cho LaTeX trước khi đọc JSON
+            raw_response = response.text.replace('TEX_', '\\')
+            cleaned_text = clean_ai_json(raw_response)
+            
             try:
-                model = genai.GenerativeModel(name)
-                response = model.generate_content(prompt)
+                return json.loads(cleaned_text)
+            except json.JSONDecodeError:
+                if attempt == 2: break # Hết 3 lần thử vẫn gãy JSON thì bỏ cuộc
+                time.sleep(1) # Nghỉ 1 giây cho AI bớt "ngáo" rồi thử lại
+                continue
+        except Exception as e:
+            last_err = str(e)
+            if "429" in last_err or "Quota" in last_err:
+                if attempt == 2: return "LỖI HẠN NGẠCH (Quota 429): Quá tải yêu cầu. Hãy chờ 1 phút hoặc kiểm tra hạn mức API."
+                time.sleep(3) # Nghỉ 3 giây nếu bị Google chặn do gọi quá nhanh
+                continue
+            elif "404" in last_err:
+                return f"LỖI KẾT NỐI (404): Tài khoản Google của bạn chưa được cấp quyền dùng {model_name}. Hãy đổi API Key khác."
+            else:
+                if attempt == 2: break
+                time.sleep(1)
+                continue
                 
-                # Tiền xử lý Bypass Token: Trả lại dấu \ cho LaTeX trước khi đọc JSON
-                raw_response = response.text.replace('TEX_', '\\')
-                cleaned_text = clean_ai_json(raw_response)
-                
-                try:
-                    return json.loads(cleaned_text)
-                except json.JSONDecodeError:
-                    if attempt == 1: break # Dừng để đổi model khác nếu vẫn lỗi
-                    time.sleep(0.5)
-                    continue
-            except Exception as e:
-                last_err = str(e)
-                if "429" in last_err or "Quota" in last_err:
-                    return "LỖI HẠN NGẠCH (Quota 429): Quá tải yêu cầu. Hãy chờ 1 phút hoặc kiểm tra hạn mức API."
-                # Nếu lỗi 404/403, break vòng lặp attempt để nhảy ngay sang model cũ hơn trong danh sách
-                break 
-                
-    return f"LỖI KẾT NỐI AI: Không có mô hình nào khả dụng hoặc API Key bị Google chặn. (Chi tiết: {last_err})"
+    return f"LỖI KẾT NỐI AI: Không thể hoàn thành sau nhiều lần thử nghiệm. (Chi tiết: {last_err})"
 
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Bạn là giáo viên Toán. Biên tập văn bản PDF dưới đây thành chuẩn đúng 40 câu trắc nghiệm.
@@ -533,7 +534,6 @@ def main():
                 new_key = st.text_input("Gemini API Key:", value=api_key, type="password")
                 if st.button("💾 Lưu API"):
                     conn = get_conn()
-                    # Lọc khoảng trắng tự động khi lưu
                     conn.execute("INSERT OR REPLACE INTO system_settings VALUES ('GEMINI_API_KEY', ?)", (new_key.strip(),))
                     conn.commit(); conn.close(); st.success("✅ Đã lưu!")
             st.markdown("---")
