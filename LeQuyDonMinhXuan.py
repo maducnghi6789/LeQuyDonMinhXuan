@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME HOÀN THIỆN) ---
+# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME - 100% AI TỐC ĐỘ CAO) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -43,7 +43,7 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
-    """VÁ LỖI JSON TỐC ĐỘ CAO (Dùng làm Fallback)"""
+    """VÁ LỖI JSON TỐC ĐỘ CAO: Lọc nhiễu thông minh"""
     res = json_str.strip()
     start_idx = res.find('[')
     end_idx = res.rfind(']')
@@ -248,7 +248,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (CÔNG NGHỆ NATIVE JSON + AUTO-DISCOVERY)
+# 4. MODULE AI KHẢO THÍ (NATIVE JSON + TRỰC TIẾP)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -283,7 +283,6 @@ def safe_ai_generate(prompt, api_key):
                 clean_name = model_name.replace('models/', '')
                 model = genai.GenerativeModel(clean_name)
                 
-                # ÉP AI TRẢ VỀ CHUẨN JSON (NATIVE JSON MODE TỪ BẢN REACT)
                 response = model.generate_content(
                     prompt,
                     generation_config=genai.types.GenerationConfig(
@@ -296,7 +295,6 @@ def safe_ai_generate(prompt, api_key):
                 try:
                     return json.loads(raw_response)
                 except json.JSONDecodeError:
-                    # Fallback dùng máy quét regex nếu Native JSON vẫn bị xước
                     cleaned_text = clean_ai_json(raw_response)
                     try:
                         return json.loads(cleaned_text)
@@ -325,65 +323,42 @@ def parse_exam_with_ai(raw_text, api_key):
     """
     return safe_ai_generate(prompt, api_key)
 
-def generate_free_practice_hybrid(api_key):
-    """CÔNG NGHỆ HYBRID 25/15 SIÊU TỐC THEO MA TRẬN TỪ REACT"""
-    conn = get_conn()
-    exams = conn.execute("SELECT questions_json FROM mandatory_exams").fetchall()
-    conn.close()
+def generate_free_practice_ai(api_key):
+    """CÔNG NGHỆ 100% AI: Sinh thẳng 40 câu theo ma trận, không cần quét CSDL để đạt tốc độ tối đa"""
     
-    local_bank = []
-    for e in exams:
-        try:
-            qs = json.loads(e[0])
-            local_bank.extend(qs)
-        except: pass
+    prompt = f"""Bạn là Thầy giáo ra đề thi Toán cấp THCS (Tập trung Toán 9).
+    Hãy sáng tác MỘT ĐỀ THI TRẮC NGHIỆM GỒM ĐÚNG 40 CÂU HỎI MỚI TINH.
     
-    valid_local = [q for q in local_bank if 'q' in q and 'options' in q and 'ans' in q]
+    TỔNG QUAN MA TRẬN 8 CHỦ ĐỀ CHUẨN (Bắt buộc đủ 40 câu):
+    1. Căn thức (6 câu)
+    2. Hàm số y=ax^2 (3 câu)
+    3. Phương trình & Hệ phương trình (8 câu)
+    4. Bất phương trình (3 câu)
+    5. Hệ thức lượng tam giác vuông (5 câu)
+    6. Đường tròn (6 câu)
+    7. Hình khối thực tiễn (3 câu)
+    8. Thống kê & Xác suất (6 câu)
     
-    num_app_qs = min(25, len(valid_local))
-    app_qs = random.sample(valid_local, num_app_qs) if num_app_qs > 0 else []
+    MỨC ĐỘ YÊU CẦU:
+    - Phân bổ rải đều: ~40% Cơ bản (Nhận biết/Thông hiểu), ~40% Khá (Vận dụng).
+    - BẮT BUỘC ĐÚNG 02 CÂU Vận dụng cao (Cực khó/Đề thi HSG).
     
-    num_ai_qs = 40 - num_app_qs
-    ai_qs = []
+    ĐỊNH DẠNG JSON BẮT BUỘC:
+    Trả về đúng 1 mảng JSON chứa 40 Object có dạng: [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Giải..."}}]
     
-    if num_ai_qs > 0:
-        app_context = ""
-        if app_qs:
-            app_context = "\n".join([f"- {q['q'][:100]}..." for q in app_qs])
-        
-        prompt = f"""Bạn là Thầy giáo ra đề thi Toán cấp THCS. 
-        Sáng tác thêm ĐÚNG {num_ai_qs} câu trắc nghiệm mới tinh. Không trùng lặp với: {app_context}
-        
-        TỔNG QUAN MA TRẬN 8 CHỦ ĐỀ CHUẨN:
-        1. Căn thức: NB, TH, VD.
-        2. Hàm số y=ax^2: NB, TH, VD.
-        3. Phương trình & Hệ phương trình: NB, TH, VD, VDC.
-        4. Bất phương trình: NB, TH, VDC.
-        5. Hệ thức lượng tam giác vuông: NB, TH, VD.
-        6. Đường tròn: NB, TH, VDC.
-        7. Hình khối thực tiễn: NB, TH, VD.
-        8. Thống kê & Xác suất: NB, TH, VD, VDC.
-        
-        YÊU CẦU CHO {num_ai_qs} CÂU NÀY:
-        - Bám sát ma trận trên. Rải đều các mức độ Nhận biết, Thông hiểu.
-        - BẮT BUỘC ĐÚNG 02 CÂU Vận dụng cao (Cực khó/Đề thi HSG).
-        
-        ĐỊNH DẠNG JSON BẮT BUỘC:
-        Trả về một mảng JSON các Object có dạng: [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Giải..."}}]
-        
-        LUẬT SINH TỒN (PHẢI TUÂN THỦ ĐỂ TRÁNH LỖI):
-        1. KHÔNG dùng nháy kép (") bên trong chuỗi, HÃY dùng nháy đơn (').
-        2. TUYỆT ĐỐI KHÔNG DÙNG DẤU GẠCH CHÉO NGƯỢC (\). Thay LATEX BẰNG 'TEX_'. (Ví dụ: TEX_sqrt{{2}}, TEX_frac{{1}}{{2}}).
-        3. MỌI biểu thức Toán ĐỀU PHẢI BỌC TRONG dấu $. (VD: $TEX_sqrt{{2}}$)
-        """
-        ai_res = safe_ai_generate(prompt, api_key)
-        
-        if isinstance(ai_res, list): ai_qs = ai_res
-        else: return ai_res 
-            
-    combined_qs = app_qs + ai_qs
-    random.shuffle(combined_qs)
-    return combined_qs[:40]
+    LUẬT SINH TỒN (PHẢI TUÂN THỦ ĐỂ TRÁNH LỖI CRASH):
+    1. KHÔNG dùng nháy kép (") bên trong chuỗi, HÃY dùng nháy đơn (').
+    2. TUYỆT ĐỐI KHÔNG DÙNG DẤU GẠCH CHÉO NGƯỢC (\). Thay LATEX BẰNG 'TEX_'. (Ví dụ: TEX_sqrt{{2}}, TEX_frac{{1}}{{2}}).
+    3. MỌI biểu thức Toán ĐỀU PHẢI BỌC TRONG dấu $. (VD: $TEX_sqrt{{2}}$).
+    4. KHÔNG để dư dấu phẩy (,) ở cuối.
+    """
+    ai_res = safe_ai_generate(prompt, api_key)
+    
+    if isinstance(ai_res, list): 
+        # Đảm bảo cắt đúng 40 câu đề phòng AI sinh thừa
+        return ai_res[:40]
+    else: 
+        return ai_res 
 
 # ==========================================
 # 5. TIỆN ÍCH HIỂN THỊ CÔNG THỨC TOÁN
@@ -755,13 +730,13 @@ def main():
         elif choice == "🚀 Luyện đề tự do":
             st.header("🚀 Luyện đề tự do") 
             if st.session_state.get('taking_free_exam') is None:
-                if st.button("🪄 TẠO ĐỀ", type="primary"): 
+                if st.button("🪄 TẠO ĐỀ AI", type="primary"): 
                     if not api_key: st.error("❌ Hệ thống chưa kết nối AI. Vui lòng liên hệ Admin nạp API Key.")
                     else:
-                        with st.spinner("🤖 Đang kết nối Trí tuệ Nhân tạo để sinh đề theo ma trận... Xin chờ (hoặc thử lại nếu máy chủ quá tải)."):
-                            free_exam = generate_free_practice_hybrid(api_key)
+                        with st.spinner("🤖 AI đang trực tiếp sáng tác 40 câu hỏi theo ma trận... Siêu tốc độ!"):
+                            free_exam = generate_free_practice_ai(api_key)
                             if isinstance(free_exam, list): 
-                                st.session_state.taking_free_exam = {'title': "Luyện đề Tự do", 'time_limit': 90, 'questions': free_exam}
+                                st.session_state.taking_free_exam = {'title': "Luyện đề Tự do (100% AI)", 'time_limit': 90, 'questions': free_exam}
                                 st.rerun()
                             else: 
                                 st.error(f"❌ {free_exam}")
