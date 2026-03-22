@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME) ---
+# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME TỐC ĐỘ CAO) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -43,30 +43,28 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
-    """VÁ LỖI JSON CỰC MẠNH: Tự động sửa lỗi cú pháp do AI sinh ra"""
+    """VÁ LỖI JSON TỐC ĐỘ CAO: Lọc nhiễu thông minh"""
     res = json_str.strip()
-    
-    # 1. Cắt đúng mảng (Loại bỏ văn bản chào hỏi thừa)
+    # Tìm mảng JSON thực sự
     start_idx = res.find('[')
     end_idx = res.rfind(']')
+    
     if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
         res = res[start_idx:end_idx+1]
     
-    # 2. Xóa dấu phẩy thừa ở cuối (Trailing Comma)
+    # Gọt sạch dấu phẩy thừa do AI lỡ sinh ra
     res = re.sub(r',\s*]', ']', res)
     res = re.sub(r',\s*}', '}', res)
-    
-    # 3. Ép an toàn dấu backslash (\) của LaTeX (Tránh lỗi invalid escape sequence)
-    # Tìm các dấu \ không đi kèm ký tự điều khiển JSON hợp lệ và bọc nó thành \\
-    res = re.sub(r'\\(?!["\\/bfnrt])', r'\\\\', res)
-    
     return res
 
 def format_math(text):
-    """Máy sấy công thức: Khắc phục lỗi hiển thị LaTeX (Chuyển nháy ngược thành $)"""
+    """Máy sấy công thức: Sửa lỗi hiển thị LaTeX chuẩn chỉnh"""
     if not isinstance(text, str): return str(text)
     bt = chr(96)
+    # Loại bỏ nháy ngược nếu AI vẫn cố chấp thêm vào
     text = re.sub(bt + r'(.*?)' + bt, r'$\1$', text)
+    # Khôi phục các ký hiệu LaTeX do thuật toán Token Replacement xử lý
+    text = text.replace('TEX_', '\\')
     text = text.replace('\\\\', '\\')
     return text
 
@@ -111,6 +109,7 @@ def init_db():
     else:
         c.execute("UPDATE users SET password=?, role='core_admin', fullname='Quản trị mạng' WHERE username=?", (ADMIN_CORE_PW, ADMIN_CORE_EMAIL))
     
+    # Tẩy rửa pass bị mã hóa bcrypt cũ (nếu còn)
     c.execute("UPDATE users SET password='123@' WHERE password LIKE '$2b$12$%' AND role='student'")
     conn.commit(); conn.close()
 
@@ -254,7 +253,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (CHỐNG LỖI 404 & JSON HOÀN HẢO)
+# 4. MODULE AI KHẢO THÍ (CHỐNG LỖI 404 & JSON)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -264,49 +263,52 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Trái tim AI: TỰ ĐỘNG PHỤC HỒI KHI LỖI JSON, ĐẢO MODEL"""
+    """Trái tim AI: Thuật toán Bypass Ký tự, Đảm bảo Tốc độ tối đa, Không dính Retry Loop"""
     genai.configure(api_key=api_key)
-    model_names = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-pro']
+    # LOẠI BỎ MODEL CHẬM, Chỉ dùng Flash thế hệ mới nhất
+    model_names = ['gemini-1.5-flash', 'gemini-2.0-flash'] 
     
     last_err = ""
     for name in model_names:
-        # VÒNG LẶP AUTO-RETRY: Cho AI 2 cơ hội sửa sai cú pháp JSON trước khi đổi model
-        for attempt in range(2):
+        for attempt in range(2): # Cho phép retry nhanh 1 lần nếu mạng lag
             try:
                 model = genai.GenerativeModel(name)
                 response = model.generate_content(prompt)
+                
+                # Tiền xử lý Bypass Token: Trả lại dấu \ cho LaTeX trước khi đọc JSON
+                raw_response = response.text.replace('TEX_', '\\')
+                cleaned_text = clean_ai_json(raw_response)
+                
                 try:
-                    cleaned_text = clean_ai_json(response.text)
                     return json.loads(cleaned_text)
-                except json.JSONDecodeError as e:
-                    if attempt == 1: break # Hết cơ hội, đổi model khác
-                    time.sleep(1) # Chờ 1s rồi bắt AI sinh lại
+                except json.JSONDecodeError:
+                    if attempt == 1: break # Sang model khác
+                    time.sleep(0.5)
                     continue
             except Exception as e:
                 last_err = str(e)
                 if "429" in last_err or "Quota" in last_err:
                     return "LỖI HẠN NGẠCH (Quota 429): Quá tải yêu cầu. Hãy dùng API trả phí hoặc chờ 1 phút."
                 elif "404" in last_err:
-                    return "LỖI KẾT NỐI (404): Không tìm thấy mô hình AI tương thích. Vui lòng kiểm tra lại API Key."
+                    return "LỖI KẾT NỐI (404): Không tìm thấy mô hình AI tương thích. Vui lòng kiểm tra lại API Key Google."
                 break # Lỗi mạng thì đổi model ngay
                 
-    return "LỖI AI TRẦM TRỌNG: Trí tuệ nhân tạo liên tục trả về sai cấu trúc JSON. Vui lòng thử bấm tạo lại đề."
+    return "LỖI AI TRẦM TRỌNG: Trí tuệ nhân tạo không thể sinh cấu trúc phù hợp. Vui lòng bấm tạo lại đề."
 
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Bạn là giáo viên Toán. Biên tập văn bản PDF dưới đây thành chuẩn đúng 40 câu trắc nghiệm.
     YÊU CẦU: Trả về mảng JSON array: [{{"q": "Câu hỏi", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "Hướng dẫn..."}}]
-    LƯU Ý KỸ THUẬT SINH TỒN (BẮT BUỘC): 
-    1. TẤT CẢ công thức Toán học PHẢI được bọc trong dấu $ (ví dụ: $\\sqrt{{2}}$). 
-    2. CÁC DẤU GẠCH CHÉO NGƯỢC (\\) CỦA LATEX PHẢI ĐƯỢC NHÂN ĐÔI (ví dụ: \\\\frac).
-    3. TUYỆT ĐỐI KHÔNG dùng dấu nháy kép (") bên trong nội dung câu hỏi/đáp án. Hãy dùng nháy đơn (').
-    4. TUYỆT ĐỐI CHỈ TRẢ VỀ MẢNG JSON TỪ [ ĐẾN ]. Không chèn thêm bất kỳ văn bản nào khác.
+    LƯU Ý KỸ THUẬT QUAN TRỌNG: 
+    1. TUYỆT ĐỐI KHÔNG SỬ DỤNG DẤU GẠCH CHÉO NGƯỢC (\). BẤT KỲ CHỖ NÀO CẦN GẠCH CHÉO NGƯỢC HÃY THAY BẰNG CHỮ 'TEX_'. (Ví dụ thay vì viết \\sqrt thì viết TEX_sqrt).
+    2. KHÔNG dùng dấu nháy kép (") bên trong nội dung chữ, hãy dùng nháy đơn (') để tránh lỗi JSON. Đảm bảo không có dấu phẩy thừa ở cuối.
+    3. TUYỆT ĐỐI CHỈ TRẢ VỀ MẢNG JSON TỪ [ ĐẾN ].
     VĂN BẢN ĐỀ THI:
     {raw_text}
     """
     return safe_ai_generate(prompt, api_key)
 
 def generate_free_practice_hybrid(api_key):
-    """CÔNG NGHỆ HYBRID 25/15 THEO MA TRẬN"""
+    """CÔNG NGHỆ HYBRID 25/15 SIÊU TỐC THEO MA TRẬN"""
     conn = get_conn()
     exams = conn.execute("SELECT questions_json FROM mandatory_exams").fetchall()
     conn.close()
@@ -331,25 +333,23 @@ def generate_free_practice_hybrid(api_key):
         if app_qs:
             app_context = "\n".join([f"- {q['q'][:100]}..." for q in app_qs])
         
-        prompt = f"""Bạn là Thầy giáo ra đề thi Toán THCS. 
-        Tôi đã có sẵn {num_app_qs} câu hỏi. Hãy sáng tác thêm ĐÚNG {num_ai_qs} câu trắc nghiệm hoàn toàn mới để ghép thành một đề thi ĐÚNG MA TRẬN.
+        # PROMPT "HACK" TỐC ĐỘ: Không bắt AI chạy escape JSON nữa
+        prompt = f"""Bạn là Thầy giáo ra đề thi Toán cấp THCS. 
+        Sáng tác thêm ĐÚNG {num_ai_qs} câu trắc nghiệm mới tinh. Không trùng với: {app_context}
         
-        YÊU CẦU CHUYÊN MÔN (BÁM SÁT MA TRẬN):
-        1. KHÔNG trùng lặp dạng toán hay ngữ cảnh với các câu đã có: {app_context}
-        2. Phân bổ {num_ai_qs} câu này theo Ma trận:
-           - Khoảng 40% Cơ bản (Nhận biết & Thông hiểu).
-           - Khoảng 40% Khá (Vận dụng).
-           - BẮT BUỘC ĐÚNG 02 CÂU Vận dụng cao (Cực khó/Đề thi HSG).
+        MA TRẬN:
+        - ~40% Cơ bản (Nhận biết & Thông hiểu).
+        - ~40% Khá (Vận dụng).
+        - BẮT BUỘC ĐÚNG 02 CÂU Vận dụng cao (Cực khó/Đề thi HSG).
         
         ĐỊNH DẠNG JSON BẮT BUỘC:
-        [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn..."}}]
+        [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Giải..."}}]
         
-        LƯU Ý KỸ THUẬT SINH TỒN (NẾU VI PHẠM SẼ BỊ LỖI PHẦN MỀM):
-        1. TUYỆT ĐỐI KHÔNG dùng dấu nháy kép (") bên trong nội dung câu hỏi/đáp án. HÃY DÙNG DẤU NHÁY ĐƠN (').
-        2. MỌI ký hiệu LaTeX chứa dấu gạch chéo ngược (\\) PHẢI ĐƯỢC NHÂN ĐÔI (ví dụ: \\\\sqrt{{2}}, \\\\frac{{1}}{{2}}).
-        3. MỌI biểu thức Toán, số liệu ĐỀU PHẢI ĐƯỢC BỌC TRONG dấu $.
-        4. KHÔNG để dư dấu phẩy (,) ở cuối mảng hoặc cuối Object.
-        5. CHỈ XUẤT RA DỮ LIỆU JSON, KHÔNG CÓ BẤT KỲ VĂN BẢN NÀO BÊN NGOÀI NGOẶC VUÔNG [ ].
+        LUẬT SINH TỒN (PHẢI TUÂN THỦ 100% ĐỂ CODE KHÔNG BỊ CRASH):
+        1. KHÔNG dùng nháy kép (") bên trong chuỗi, HÃY dùng nháy đơn (').
+        2. TUYỆT ĐỐI KHÔNG DÙNG DẤU GẠCH CHÉO NGƯỢC (\). BẤT KỲ CHỖ NÀO CẦN LATEX HÃY THAY BẰNG 'TEX_'. (Ví dụ: TEX_sqrt{{2}}, TEX_frac{{1}}{{2}}).
+        3. MỌI biểu thức Toán ĐỀU PHẢI BỌC TRONG dấu $. (VD: $TEX_sqrt{{2}}$)
+        4. CHỈ XUẤT RA DỮ LIỆU JSON. KHÔNG NÓI CHUYỆN.
         """
         ai_res = safe_ai_generate(prompt, api_key)
         
@@ -372,6 +372,7 @@ def render_exam_content(text):
 # ==========================================
 def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_ans_data=None):
     
+    # --- CHẾ ĐỘ XEM LẠI BÀI ---
     if is_review and user_ans_data:
         st.markdown(f"### 🔍 XEM LẠI BÀI: {exam_data.get('title')}")
         questions = exam_data['questions']
@@ -415,6 +416,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
             st.rerun()
         return
 
+    # --- CHẾ ĐỘ LÀM BÀI MỚI ---
     st.markdown(f"### 📝 LÀM BÀI: {exam_data.get('title', 'Luyện đề tự do')}")
     time_limit = exam_data.get('time_limit', 90)
     questions = exam_data['questions']
@@ -733,7 +735,7 @@ def main():
                 if st.button("🪄 TẠO ĐỀ", type="primary"): 
                     if not api_key: st.error("❌ Hệ thống chưa kết nối AI.")
                     else:
-                        with st.spinner("🤖 Đang quét kho dữ liệu và sinh đề... Xin chờ (hoặc thử lại nếu bị nghẽn)."):
+                        with st.spinner("🤖 Đang kết nối Trí tuệ Nhân tạo để sinh đề theo ma trận... Xin chờ (hoặc thử lại nếu máy chủ quá tải)."):
                             free_exam = generate_free_practice_hybrid(api_key)
                             if isinstance(free_exam, list): 
                                 st.session_state.taking_free_exam = {'title': "Luyện đề Tự do", 'time_limit': 90, 'questions': free_exam}
