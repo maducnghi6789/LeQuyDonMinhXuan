@@ -57,21 +57,17 @@ def gen_smart_username(fullname, existing_usernames):
 def clean_ai_json(json_str):
     """VÁ LỖI JSON: Dùng máy quét tìm chính xác mảng Array, bỏ qua AI thừa lời"""
     res = json_str.strip()
-    # Dò tìm vị trí bắt đầu và kết thúc của mảng JSON
     start_idx = res.find('[')
     end_idx = res.rfind(']')
     
     if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-        # Cắt lấy đúng phần lõi dữ liệu
         return res[start_idx:end_idx+1]
-    
-    return res # Trả về gốc nếu không tìm thấy cấu trúc mảng
+    return res 
 
 def format_math(text):
     """Máy sấy công thức: Khắc phục lỗi hiển thị LaTeX (Chuyển nháy ngược thành $)"""
     if not isinstance(text, str): return str(text)
     bt = chr(96)
-    # Tự động chuyển đổi các công thức bị AI bọc bằng nháy ngược (`) sang định dạng ($) chuẩn của Streamlit
     text = re.sub(bt + r'(.*?)' + bt, r'$\1$', text)
     text = text.replace('\\\\', '\\')
     return text
@@ -111,7 +107,6 @@ def init_db():
 
     c.execute('''CREATE TABLE IF NOT EXISTS mandatory_results (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, exam_id INTEGER, score REAL, user_answers_json TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
     
-    # BẢO MẬT: Kiểm tra Admin, thay đổi theo cấu hình tên và email mới
     admin_exists = conn.execute("SELECT 1 FROM users WHERE username=?", (ADMIN_CORE_EMAIL,)).fetchone()
     if not admin_exists:
         c.execute("INSERT INTO users (username, password, role, fullname) VALUES (?, ?, 'core_admin', 'Quản trị mạng')", (ADMIN_CORE_EMAIL, hash_pw(ADMIN_CORE_PW)))
@@ -136,7 +131,6 @@ def account_manager_ui(target_role, specific_class=None):
     st.markdown(f"#### 🛠️ Quản lý {target_role}")
     conn = get_conn()
     
-    # FIX (1): Chống SQL Injection cực nguy hiểm
     query = "SELECT * FROM users WHERE role=?"
     params = [target_role]
     if specific_class and specific_class != "Tất cả các lớp": 
@@ -150,7 +144,6 @@ def account_manager_ui(target_role, specific_class=None):
         if 'school' in df.columns: cols.append('school')
         if 'managed_classes' in df.columns and target_role == 'sub_admin': cols.append('managed_classes')
         
-        # FIX (2): Chống lộ mật khẩu (Hiển thị trực tiếp)
         df_display = df.copy()
         if 'password' in df_display.columns:
             df_display['password'] = '********'
@@ -163,7 +156,7 @@ def account_manager_ui(target_role, specific_class=None):
             with st.form(f"form_{sel_u}"):
                 c1, c2 = st.columns(2)
                 f_name = c1.text_input("Họ và Tên", value=u_data['fullname'])
-                f_pass = c2.text_input("🔑 Mật khẩu", value="********") # Che mật khẩu cũ
+                f_pass = c2.text_input("🔑 Mật khẩu", value="********") 
                 f_cls = c1.text_input("Lớp", value=u_data['class_name'] if u_data['class_name'] else "")
                 f_sch = c2.text_input("Trường", value=u_data.get('school', '') if pd.notna(u_data.get('school')) else "")
                 f_man = st.text_input("Quyền quản lý", value=u_data.get('managed_classes', '') if pd.notna(u_data.get('managed_classes')) else "") if target_role == 'sub_admin' else ""
@@ -214,7 +207,6 @@ def import_student_module():
                     if name and name.lower() != 'nan' and cls and cls.lower() != 'nan':
                         uname = gen_smart_username(name, existing); existing.add(uname)
                         try:
-                            # FIX (3): Hash password khi tạo user mới
                             conn.execute("INSERT INTO users (username, password, role, fullname, class_name) VALUES (?,?,?,?,?)", (uname, hash_pw("123@"), "student", name, cls))
                             s += 1
                         except Exception as e: f += 1; errs.append(f"- Dòng {idx+2}: Lỗi DB")
@@ -244,7 +236,6 @@ def delete_class_module(all_classes):
             conn.execute("DELETE FROM users WHERE class_name=? AND role='student'", (sel_cl,))
             subs = conn.execute("SELECT username, managed_classes FROM users WHERE role='sub_admin'").fetchall()
             for sa, mng in subs:
-                # FIX (8): Xóa lớp có thể lỗi None managed_classes
                 if mng:
                     new_mng = ", ".join([c.strip() for c in mng.split(',') if c.strip() != sel_cl])
                 else:
@@ -260,20 +251,18 @@ def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
     text = ""
     for page in doc: text += page.get_text("text") + "\n"
-    doc.close() # FIX (9): Tránh memory leak
+    doc.close()
     return text
 
 def safe_ai_generate(prompt, api_key):
     """Trái tim AI: Bắt lỗi thân thiện, đảo model, chống Crash JSON"""
     genai.configure(api_key=api_key)
-    # FIX (6): Fallback chống lỗi 404
     model_names = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-pro']
     last_err = ""
     for name in model_names:
         try:
             model = genai.GenerativeModel(name)
             response = model.generate_content(prompt)
-            # FIX (5): AI JSON dễ crash, đã nâng cấp hàm clean_ai_json để tự bóc tách
             try:
                 return json.loads(clean_ai_json(response.text))
             except json.JSONDecodeError:
@@ -302,7 +291,7 @@ def parse_exam_with_ai(raw_text, api_key):
     return safe_ai_generate(prompt, api_key)
 
 def generate_free_practice_hybrid(api_key):
-    """CÔNG NGHỆ HYBRID 25/15: Lấy 25 câu kho APP, sinh 15 câu AI, lắc đều."""
+    """CÔNG NGHỆ HYBRID 25/15 THEO MA TRẬN: Lấy 25 câu kho APP, AI sinh 15 câu bám sát Ma Trận."""
     conn = get_conn()
     exams = conn.execute("SELECT questions_json FROM mandatory_exams").fetchall()
     conn.close()
@@ -316,24 +305,28 @@ def generate_free_practice_hybrid(api_key):
     
     valid_local = [q for q in local_bank if 'q' in q and 'options' in q and 'ans' in q]
     
-    # YÊU CẦU MỚI: Lấy 25 câu từ DB
+    # BƯỚC 1: Lấy 25 câu ngẫu nhiên từ CSDL
     num_app_qs = min(25, len(valid_local))
     app_qs = random.sample(valid_local, num_app_qs) if num_app_qs > 0 else []
     
-    # AI chỉ sinh phần còn lại (Thường là 15 câu)
+    # BƯỚC 2: Tính toán số câu AI cần sinh (Thường là 15 câu)
     num_ai_qs = 40 - num_app_qs
     ai_qs = []
     
     if num_ai_qs > 0:
         app_context = ""
         if app_qs:
-            # Lấy ngữ cảnh để AI né tránh trùng lặp
             app_context = "\n".join([f"- {q['q'][:100]}..." for q in app_qs])
         
-        prompt = f"""Bạn là chuyên gia ra đề thi Toán. Sáng tác thêm ĐÚNG {num_ai_qs} câu trắc nghiệm Toán THCS hoàn toàn mới.
-        YÊU CẦU CHUYÊN MÔN:
-        - Tuyệt đối không trùng lặp dạng toán, giá trị số hoặc ngữ cảnh với các câu sau: {app_context}
-        - TRONG {num_ai_qs} CÂU NÀY, BẮT BUỘC PHẢI CÓ 02 CÂU VẬN DỤNG CAO (ĐỘ KHÓ ĐỀ THI HỌC SINH GIỎI THẬT KHÓ), các câu còn lại rải đều mức độ.
+        prompt = f"""Bạn là Thầy giáo ra đề thi Toán cấp THCS (Tập trung Toán 9). 
+        Tôi đã có sẵn {num_app_qs} câu hỏi. Hãy sáng tác thêm ĐÚNG {num_ai_qs} câu trắc nghiệm hoàn toàn mới để ghép thành một đề thi ĐÚNG MA TRẬN chuẩn.
+        
+        YÊU CẦU CHUYÊN MÔN (BÁM SÁT MA TRẬN):
+        1. KHÔNG trùng lặp dạng toán, giá trị số hoặc ngữ cảnh với các câu đã có: {app_context}
+        2. Phân bổ {num_ai_qs} câu này theo Ma trận 4 mức độ nhận thức:
+           - Khoảng 40% số câu Cơ bản (Nhận biết & Thông hiểu): Đại số (Căn bậc hai, Hàm số bậc nhất, Hệ PT...), Hình học (Hệ thức lượng, Góc nội tiếp...).
+           - Khoảng 40% số câu Khá (Vận dụng): Giải bài toán bằng cách lập PT/HPT, chứng minh Hình học đường tròn.
+           - BẮT BUỘC ĐÚNG 02 CÂU Vận dụng cao (Cực khó/Đề thi HSG): Điểm 10 phân loại (Bất đẳng thức, Cực trị, Hình học phẳng phức tạp...).
         
         ĐỊNH DẠNG JSON BẮT BUỘC:
         [{{"q": "Câu hỏi", "options": ["A. ", "B. ", "C. ", "D. "], "ans": "A", "exp": "Hướng dẫn giải chi tiết"}}]
@@ -342,7 +335,7 @@ def generate_free_practice_hybrid(api_key):
         1. KHÔNG dùng dấu nháy kép (") bên trong nội dung chữ, hãy dùng nháy đơn (') để không làm hỏng cấu trúc JSON.
         2. MỌI biểu thức Toán, số liệu ĐỀU PHẢI ĐƯỢC BỌC TRONG dấu $ (VD: $\\sqrt{{2}}$, $\\frac{{1}}{{2}}$). KHÔNG dùng ký hiệu ` (backtick).
         3. Phải escape backslash (viết \\\\sqrt thay vì \\sqrt).
-        4. CHỈ TRẢ VỀ MẢNG JSON, KHÔNG CHÀO HỎI, KHÔNG CẦN GIẢI THÍCH THÊM.
+        4. TUYỆT ĐỐI CHỈ TRẢ VỀ MẢNG JSON. KHÔNG XUẤT HIỆN BẤT CỨ TỪ NGỮ NÀO BÊN NGOÀI NGOẶC VUÔNG [ ].
         """
         ai_res = safe_ai_generate(prompt, api_key)
         
