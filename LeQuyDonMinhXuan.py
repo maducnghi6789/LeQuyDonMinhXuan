@@ -51,7 +51,6 @@ def clean_ai_json(json_str):
     if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
         res = res[start_idx:end_idx+1]
     
-    # Gọt sạch dấu phẩy thừa do AI hay sinh lỗi
     res = re.sub(r',\s*]', ']', res)
     res = re.sub(r',\s*}', '}', res)
     return res
@@ -99,14 +98,15 @@ def init_db():
 
     c.execute('''CREATE TABLE IF NOT EXISTS mandatory_results (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, exam_id INTEGER, score REAL, user_answers_json TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
     
-    # BẢO MẬT & SỬA LỖI ĐĂNG NHẬP: Ép hệ thống luôn ghi nhận thông tin admin chuẩn
     admin_exists = conn.execute("SELECT 1 FROM users WHERE username=?", (ADMIN_CORE_EMAIL,)).fetchone()
     if not admin_exists:
         c.execute("INSERT INTO users (username, password, role, fullname) VALUES (?, ?, 'core_admin', 'Quản trị mạng')", (ADMIN_CORE_EMAIL, ADMIN_CORE_PW))
     else:
-        # Dòng này sẽ chữa lành CSDL của bạn, ghi đè chữ "admin123" chuẩn vào để bạn đăng nhập được
         c.execute("UPDATE users SET password=?, role='core_admin', fullname='Quản trị mạng' WHERE username=?", (ADMIN_CORE_PW, ADMIN_CORE_EMAIL))
-        
+    
+    # --- THUỐC GIẢI: Quét và tẩy rửa các mật khẩu bị mã hóa bcrypt cũ ---
+    c.execute("UPDATE users SET password='123@' WHERE password LIKE '$2b$12$%' AND role='student'")
+    
     conn.commit(); conn.close()
 
 def log_deletion(deleted_by, entity_type, entity_name, reason):
@@ -128,7 +128,6 @@ def account_manager_ui(target_role, specific_class=None):
     st.markdown(f"#### 🛠️ Quản lý {target_role}")
     conn = get_conn()
     
-    # Chống SQL Injection
     query = "SELECT * FROM users WHERE role=?"
     params = [target_role]
     if specific_class and specific_class != "Tất cả các lớp": 
@@ -144,7 +143,6 @@ def account_manager_ui(target_role, specific_class=None):
         
         st.dataframe(df[cols], use_container_width=True)
         
-        # --- TÍNH NĂNG MỚI: XUẤT EXCEL DANH SÁCH TÀI KHOẢN ---
         out = BytesIO()
         with pd.ExcelWriter(out, engine='openpyxl') as w:
             rename_cols = {'username': 'Tài khoản', 'fullname': 'Họ và tên', 'password': 'Mật khẩu', 'class_name': 'Lớp'}
@@ -163,7 +161,6 @@ def account_manager_ui(target_role, specific_class=None):
             with st.form(f"form_{sel_u}"):
                 c1, c2 = st.columns(2)
                 f_name = c1.text_input("Họ và Tên", value=u_data['fullname'])
-                # Hiển thị mật khẩu rõ ràng
                 f_pass = c2.text_input("🔑 Mật khẩu", value=u_data['password']) 
                 f_cls = c1.text_input("Lớp", value=u_data['class_name'] if u_data['class_name'] else "")
                 f_sch = c2.text_input("Trường", value=u_data.get('school', '') if pd.notna(u_data.get('school')) else "")
@@ -252,7 +249,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (CHỐNG LỖI 404 & JSON)
+# 4. MODULE AI KHẢO THÍ
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -312,7 +309,6 @@ def generate_free_practice_hybrid(api_key):
     
     valid_local = [q for q in local_bank if 'q' in q and 'options' in q and 'ans' in q]
     
-    # Lấy 25 câu ngẫu nhiên từ CSDL
     num_app_qs = min(25, len(valid_local))
     app_qs = random.sample(valid_local, num_app_qs) if num_app_qs > 0 else []
     
@@ -364,7 +360,6 @@ def render_exam_content(text):
 # ==========================================
 def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_ans_data=None):
     
-    # --- CHẾ ĐỘ XEM LẠI BÀI ---
     if is_review and user_ans_data:
         st.markdown(f"### 🔍 XEM LẠI BÀI: {exam_data.get('title')}")
         questions = exam_data['questions']
@@ -408,7 +403,6 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
             st.rerun()
         return
 
-    # --- CHẾ ĐỘ LÀM BÀI MỚI ---
     st.markdown(f"### 📝 LÀM BÀI: {exam_data.get('title', 'Luyện đề tự do')}")
     time_limit = exam_data.get('time_limit', 90)
     questions = exam_data['questions']
@@ -507,7 +501,6 @@ def main():
                     conn = get_conn()
                     res = conn.execute("SELECT role, fullname, class_name, managed_classes, password FROM users WHERE username=?", (u,)).fetchone()
                     conn.close()
-                    # Xác thực Mật khẩu thường (Plain Text)
                     if res and p == res[4]:
                         st.session_state.current_user = u
                         st.session_state.role, st.session_state.fullname, st.session_state.class_name, st.session_state.managed = res[0], res[1], res[2], res[3]
