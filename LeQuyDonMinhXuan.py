@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME - TỐC ĐỘ TỐI ĐA) ---
+# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME - BẢO VỆ API MIỄN PHÍ) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -43,7 +43,7 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
-    """VÁ LỖI JSON TỐC ĐỘ CAO: Bóc tách mảng cực mạnh"""
+    """VÁ LỖI JSON TỐC ĐỘ CAO: Lọc nhiễu thông minh"""
     res = json_str.strip()
     start_idx = res.find('[')
     end_idx = res.rfind(']')
@@ -248,7 +248,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (SIÊU TỐC VÀ MIỄN PHÍ)
+# 4. MODULE AI KHẢO THÍ (BẢO VỆ API KEY TUYỆT ĐỐI)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -258,50 +258,32 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Trái tim AI: Tốc độ cao, tối ưu cho Free API Key của Google"""
+    """Trái tim AI: Bỏ Auto-Retry để không spam API, chỉ dùng 1.5-flash"""
     if not api_key or not api_key.strip():
-        return "LỖI HỆ THỐNG: Chưa nhập API Key."
+        return "LỖI: Chưa nhập API Key."
         
     genai.configure(api_key=api_key.strip())
-    
-    # CHỐT CỨNG 1.5-FLASH: Model tốt nhất và nhanh nhất cho bản Free.
-    # Không dùng list_models() để tiết kiệm 1 lệnh gọi API.
     model = genai.GenerativeModel('gemini-1.5-flash')
     
-    for attempt in range(2): # Chỉ thử lại 1 lần để tránh bị Google khóa vì Spam (Lỗi 429)
+    try:
+        response = model.generate_content(prompt)
+        raw_response = response.text.replace('TEX_', '\\')
+        cleaned_text = clean_ai_json(raw_response)
         try:
-            response = model.generate_content(prompt)
-            # Khôi phục Token LaTeX
-            raw_response = response.text.replace('TEX_', '\\')
-            cleaned_text = clean_ai_json(raw_response)
+            return json.loads(cleaned_text)
+        except json.JSONDecodeError:
+            return "LỖI AI: Định dạng JSON trả về bị hỏng. Bạn hãy thử tạo lại đề."
             
-            try:
-                return json.loads(cleaned_text)
-            except json.JSONDecodeError as e:
-                if attempt == 1: 
-                    return f"LỖI AI: Định dạng JSON trả về bị hỏng. Bạn hãy thử tạo lại đề."
-                time.sleep(1)
-                continue
-        except Exception as e:
-            err_msg = str(e).lower()
-            if "429" in err_msg or "quota" in err_msg:
-                # Quá tải thì chờ 2s rồi thử lại
-                if attempt == 1:
-                    return "LỖI HẠN NGẠCH (429): Quá tải yêu cầu API Miễn phí. Hãy chờ 1 phút rồi thử lại."
-                time.sleep(2)
-                continue
-            elif "404" in err_msg or "403" in err_msg or "api key" in err_msg:
-                return "LỖI KẾT NỐI: API Key của bạn không hợp lệ hoặc đã bị khóa."
-            else:
-                if attempt == 1:
-                    return f"LỖI AI KHÔNG XÁC ĐỊNH: {str(e)}"
-                time.sleep(1)
-                continue
-                
-    return "LỖI HỆ THỐNG: Quá trình xử lý thất bại."
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "429" in err_msg or "quota" in err_msg:
+            return "LỖI HẠN NGẠCH (429): Quá tải yêu cầu API Miễn phí. Hãy chờ 1 phút rồi thử lại."
+        elif "400" in err_msg or "403" in err_msg or "invalid" in err_msg or "api key" in err_msg:
+            return "LỖI API KEY BỊ KHÓA: API Key của bạn không hợp lệ hoặc đã bị Google khóa. VUI LÒNG DÙNG 1 TÀI KHOẢN GMAIL MỚI ĐỂ TẠO KEY."
+        else:
+            return f"LỖI HỆ THỐNG AI: {str(e)}"
 
 def parse_exam_with_ai(raw_text, api_key):
-    # Prompt rút gọn, tối đa tốc độ biên tập đề PDF
     prompt = f"""Trích xuất 40 câu trắc nghiệm từ văn bản dưới đây.
     YÊU CẦU ĐỊNH DẠNG: Chỉ trả về JSON Array: [{{"q": "...", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "..."}}]
     LƯU Ý BẮT BUỘC: 
@@ -315,8 +297,6 @@ def parse_exam_with_ai(raw_text, api_key):
 
 def generate_free_practice_ai(api_key):
     """CÔNG NGHỆ 100% AI: Tốc độ Ánh sáng, bám sát Ma trận Toán 9"""
-    
-    # Prompt cắt bỏ ngữ cảnh thừa, ép AI tập trung sáng tác nhanh nhất
     prompt = """Hãy sáng tác MỘT ĐỀ THI TRẮC NGHIỆM TOÁN THCS GỒM ĐÚNG 40 CÂU.
     MA TRẬN CHỦ ĐỀ CẦN CÓ:
     - Căn thức, Hàm số y=ax^2, PT & Hệ PT, Bất PT, Hệ thức lượng, Đường tròn, Hình khối, Thống kê & Xác suất.
@@ -329,7 +309,7 @@ def generate_free_practice_ai(api_key):
     1. Dùng nháy đơn (') bên trong nội dung, TUYỆT ĐỐI KHÔNG dùng nháy kép (").
     2. Thay toàn bộ dấu gạch chéo ngược (\) của Toán học bằng chữ 'TEX_'. (VD: TEX_sqrt, TEX_frac).
     3. Bọc biểu thức Toán trong dấu $. (VD: $TEX_sqrt{2}$).
-    4. CHỈ XUẤT JSON.
+    4. CHỈ XUẤT JSON. KHÔNG XUẤT VĂN BẢN THƯỜNG.
     """
     ai_res = safe_ai_generate(prompt, api_key)
     
@@ -577,7 +557,7 @@ def main():
                     
                     if st.form_submit_button("🚀 BIÊN TẬP & GIAO ĐỀ BẰNG AI"):
                         if e_title and e_file:
-                            with st.spinner("🤖 AI đang phân tích PDF và biên tập đề... Xin chờ."):
+                            with st.spinner("🤖 Đang phân tích PDF và biên tập đề... Xin chờ."):
                                 raw_txt = extract_text_from_pdf(e_file)
                                 exam_res = parse_exam_with_ai(raw_txt, api_key)
                                 if isinstance(exam_res, list):
@@ -670,7 +650,7 @@ def main():
                                 st.success(f"🌟 **Câu làm tốt nhất:** {', '.join(easy_qs)} ({min_wrong} lượt sai).")
             conn.close()
 
-        elif choice == "✍️ Kiểm bắt buộc":
+        elif choice == "✍️ Kiểm tra bắt buộc":
             st.header("✍️ Kiểm tra bắt buộc")
             conn = get_conn()
             exams = conn.execute("SELECT id, title, questions_json, time_limit FROM mandatory_exams WHERE target_class=? OR target_class='Tất cả các lớp'", (st.session_state.class_name,)).fetchall()
@@ -708,7 +688,7 @@ def main():
         elif choice == "🚀 Luyện đề tự do":
             st.header("🚀 Luyện đề tự do") 
             if st.session_state.get('taking_free_exam') is None:
-                if st.button("🪄 TẠO ĐỀ", type="primary"): 
+                if st.button("🪄 TẠO ĐỀ AI", type="primary"): 
                     if not api_key: st.error("❌ Hệ thống chưa kết nối AI. Vui lòng liên hệ Admin nạp API Key.")
                     else:
                         with st.spinner("Đang tạo đề, xin đợi..."):
