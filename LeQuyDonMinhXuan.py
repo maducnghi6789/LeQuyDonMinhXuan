@@ -9,11 +9,13 @@ import unicodedata
 import random
 import re
 from io import BytesIO
+import matplotlib.pyplot as plt
+import numpy as np
+from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
-from datetime import datetime, timedelta, timezone
 
-# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME - TINH HOA TÍCH HỢP) ---
+# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME - CHỐNG 404 TUYỆT ĐỐI) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -41,7 +43,7 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
-    """VÁ LỖI JSON TỐC ĐỘ CAO: Lọc nhiễu thông minh"""
+    """VÁ LỖI JSON TỐC ĐỘ CAO: Bóc tách mảng cực mạnh"""
     res = json_str.strip()
     start_idx = res.find('[')
     end_idx = res.rfind(']')
@@ -138,10 +140,8 @@ def account_manager_ui(target_role, specific_class=None):
         if 'school' in df.columns: cols.append('school')
         if 'managed_classes' in df.columns and target_role == 'sub_admin': cols.append('managed_classes')
         
-        # HIỂN THỊ MẬT KHẨU RÕ RÀNG (Không mã hóa)
         st.dataframe(df[cols], use_container_width=True)
         
-        # TÍNH NĂNG: XUẤT EXCEL
         out = BytesIO()
         with pd.ExcelWriter(out, engine='openpyxl') as w:
             rename_cols = {'username': 'Tài khoản', 'fullname': 'Họ và tên', 'password': 'Mật khẩu', 'class_name': 'Lớp'}
@@ -248,7 +248,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (TÍCH HỢP TINH HOA FASTAPI)
+# 4. MODULE AI KHẢO THÍ (BĂNG CHUYỀN MODEL TÀNG HÌNH)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -258,47 +258,66 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Trái tim AI: Áp dụng Configuration chuyên biệt giải Toán và bảo vệ API Key"""
+    """Trái tim AI: Tự động nuốt lỗi 404 và nhảy model siêu tốc"""
     if not api_key or not api_key.strip():
-        return "LỖI: Chưa nhập API Key."
+        return "LỖI HỆ THỐNG: Chưa nhập API Key."
         
     genai.configure(api_key=api_key.strip())
-    model = genai.GenerativeModel('gemini-1.5-flash')
     
-    for attempt in range(2):
+    # DANH SÁCH BĂNG CHUYỀN SINH TỒN
+    # AI sẽ thử từ trên xuống dưới. Bị 404 lập tức trượt xuống model tiếp theo.
+    models_to_try = [
+        'gemini-1.5-flash',
+        'gemini-1.5-flash-latest',
+        'gemini-pro' # Model dự phòng 100% chạy được cho mọi API
+    ]
+    
+    last_err = ""
+    for model_name in models_to_try:
         try:
-            # TINH HOA CẤU HÌNH TỪ BẢN CHUYÊN GIA (Temperature = 0.2, Native JSON)
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.2, 
-                    response_mime_type="application/json"
-                )
-            )
+            model = genai.GenerativeModel(model_name)
             
+            # Nếu là dòng flash hiện đại, ta áp dụng cấu trúc Native JSON
+            if 'flash' in model_name:
+                response = model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        temperature=0.2, 
+                        response_mime_type="application/json"
+                    )
+                )
+            else:
+                # Nếu là gemini-pro cũ, ta bỏ ép JSON để tránh lỗi not supported
+                response = model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(temperature=0.2)
+                )
+                
             raw_response = response.text.replace('TEX_', '\\')
+            cleaned_text = clean_ai_json(raw_response)
             
             try:
-                return json.loads(raw_response)
+                return json.loads(cleaned_text)
             except json.JSONDecodeError:
-                cleaned_text = clean_ai_json(raw_response)
-                try:
-                    return json.loads(cleaned_text)
-                except:
-                    if attempt == 1: return "LỖI AI: Định dạng JSON trả về bị hỏng. Bạn hãy thử tạo lại đề."
-                    time.sleep(1)
-                    continue
-                    
+                # Lỗi JSON thì nuốt lỗi, thử nhảy model khác
+                continue
+                
         except Exception as e:
             err_msg = str(e).lower()
-            if "429" in err_msg or "quota" in err_msg:
-                return "LỖI HẠN NGẠCH (429): Quá tải yêu cầu API Miễn phí. Hãy chờ 1 phút rồi thử lại."
-            elif "400" in err_msg or "403" in err_msg or "api key" in err_msg:
-                return "LỖI API KEY: Key của bạn không hợp lệ hoặc đã bị khóa. Vui lòng kiểm tra lại."
-            else:
-                if attempt == 1: return f"LỖI HỆ THỐNG AI: {str(e)}"
-                time.sleep(1)
+            last_err = err_msg
+            
+            if "404" in err_msg or "not found" in err_msg or "not supported" in err_msg:
+                # TUYỆT CHIÊU: Bị Google chặn model này -> Âm thầm nhảy sang model kế tiếp
                 continue
+            elif "429" in err_msg or "quota" in err_msg:
+                return "LỖI HẠN NGẠCH (429): API Miễn phí đang quá tải. Xin vui lòng chờ 1 phút rồi thử lại."
+            elif "400" in err_msg or "403" in err_msg or "api key" in err_msg:
+                return "LỖI API KEY: Key của bạn không hợp lệ hoặc đã bị Google khóa. Vui lòng tạo Key mới."
+            else:
+                # Lỗi lạ khác thì tiếp tục băng chuyền
+                continue
+                
+    return f"LỖI HỆ THỐNG AI: Không thể kết nối với mô hình nào của Google. (Chi tiết: {last_err})"
 
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Trích xuất 40 câu trắc nghiệm Toán từ văn bản dưới đây.
@@ -571,7 +590,7 @@ def main():
                     
                     if st.form_submit_button("🚀 BIÊN TẬP & GIAO ĐỀ BẰNG AI"):
                         if e_title and e_file:
-                            with st.spinner("🤖 Đang phân tích PDF và biên tập đề... Xin chờ."):
+                            with st.spinner("Đang phân tích PDF và biên tập đề, xin đợi..."):
                                 raw_txt = extract_text_from_pdf(e_file)
                                 exam_res = parse_exam_with_ai(raw_txt, api_key)
                                 if isinstance(exam_res, list):
@@ -667,6 +686,7 @@ def main():
         elif choice == "✍️ Kiểm tra bắt buộc":
             st.header("✍️ Kiểm tra bắt buộc")
             conn = get_conn()
+            
             student_class = st.session_state.class_name.strip() if st.session_state.class_name else ""
             exams = conn.execute("SELECT id, title, questions_json, time_limit FROM mandatory_exams WHERE trim(target_class)=? OR target_class='Tất cả các lớp'", (student_class,)).fetchall()
             
@@ -710,7 +730,7 @@ def main():
                         with st.spinner("Đang tạo đề, xin đợi..."):
                             free_exam = generate_free_practice_ai(api_key)
                             if isinstance(free_exam, list): 
-                                st.session_state.taking_free_exam = {'title': "Luyện đề Tự do (100% AI)", 'time_limit': 90, 'questions': free_exam}
+                                st.session_state.taking_free_exam = {'title': "Luyện đề Tự do", 'time_limit': 90, 'questions': free_exam}
                                 st.rerun()
                             else: 
                                 st.error(f"❌ {free_exam}")
