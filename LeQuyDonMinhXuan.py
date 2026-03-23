@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V34 (BẢN A1 SUPREME - TỐI GIẢN UI & CHUẨN ĐỀ THI) ---
+# --- CẤU HÌNH HỆ THỐNG V35 (BẢN A1 SUPREME - TÍCH HỢP HÌNH ẢNH TRỰC QUAN) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -233,17 +233,14 @@ def safe_ai_generate(prompt, api_key_string):
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Trích xuất 40 câu trắc nghiệm Toán từ văn bản dưới đây.
     YÊU CẦU ĐỊNH DẠNG: Trả về mảng JSON Array: [{{"q": "...", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "..."}}]
-    LƯU Ý: 
-    1. Bọc các công thức trong dấu $. (VD: $\sqrt{{2}}$)
-    2. Dùng nháy đơn (') bên trong chuỗi, KHÔNG dùng nháy kép (").
+    LƯU Ý: Bọc các công thức trong dấu $. Dùng nháy đơn (') bên trong chuỗi.
     VĂN BẢN:
     {raw_text}
     """
     return safe_ai_generate(prompt, api_key)
 
 # ==========================================
-# 5. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE, CHUẨN TOÁN HỌC)
-# Bỏ hoàn toàn các từ phân loại: (Đề HSG), (Vận dụng),...
+# 5. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ KÈM HÌNH ẢNH TRỰC QUAN
 # ==========================================
 def generate_algorithmic_practice():
     exam = []
@@ -251,10 +248,8 @@ def generate_algorithmic_practice():
     def make_options(*args):
         opts = [f"${str(opt)}$" for opt in args]
         correct_val_formatted = opts[0]
-        
         random.shuffle(opts)
         correct_opt_idx = opts.index(correct_val_formatted)
-        
         labels = ["A.", "B.", "C.", "D."]
         ans_label = labels[correct_opt_idx]
         formatted_opts = [f"{labels[i]} {opts[i]}" for i in range(4)]
@@ -314,7 +309,7 @@ def generate_algorithmic_practice():
                     f"B. Đồng biến khi $x < 0$" if a>0 else f"B. Nghịch biến khi $x < 0$",
                     "C. Luôn đồng biến trên $\mathbb{R}$", "D. Luôn nghịch biến trên $\mathbb{R}$"],
         "ans": "A",
-        "exp": f"Vì $a = {a} {' > 0' if a>0 else '< 0'}$, hàm số {is_up} khi $x > 0$."
+        "exp": f"Vì hệ số $a = {a}$, hàm số {is_up} khi $x > 0$."
     })
     exam.append({
         "q": f"Số giao điểm của parabol $(P): y = x^2$ và đường thẳng $(d): y = 2x - 1$ là:",
@@ -384,35 +379,51 @@ def generate_algorithmic_practice():
         "exp": "Hàm số đồng biến khi hệ số góc $a > 0 \Leftrightarrow 2m - 4 > 0 \Leftrightarrow m > 2$."
     })
 
-    # --- 5. HỆ THỨC LƯỢNG (5 CÂU) ---
+    # --- 5. HỆ THỨC LƯỢNG (5 CÂU CÓ HÌNH ẢNH TRỰC QUAN) ---
     exam.append({
         "q": "Cho $\Delta ABC$ vuông tại $A$, đường cao $AH$. Khẳng định nào sau đây SAI?",
         "options": ["A. $AH^2 = HB.HC$", "B. $AB^2 = BH.BC$", "C. $AH.BC = AB.AC$", "D. $\\frac{1}{AH} = \\frac{1}{AB} + \\frac{1}{AC}$"],
         "ans": "D", "exp": "Công thức đúng phải là bình phương: $\\frac{1}{AH^2} = \\frac{1}{AB^2} + \\frac{1}{AC^2}$."
     })
-    c1, c2, ch = random.choice([(3,4,5), (6,8,10)])
+    
+    # Câu Cái Cây
+    b_cay = random.randint(3, 8)
+    g_cay = random.choice([30, 45, 60])
+    h_cay = round(b_cay * math.tan(math.radians(g_cay)), 1)
     exam.append({
-        "q": f"Cho $\Delta ABC$ vuông tại $A$, có $AB = {c1}cm, AC = {c2}cm$. Tính $\\tan B$.",
-        "options": make_options(f"\\frac{{{c2}}}{{{c1}}}", f"\\frac{{{c1}}}{{{c2}}}", f"\\frac{{{c1}}}{{{ch}}}", f"\\frac{{{c2}}}{{{ch}}}")[0],
-        "ans": make_options(f"\\frac{{{c2}}}{{{c1}}}", f"\\frac{{{c1}}}{{{c2}}}", f"\\frac{{{c1}}}{{{ch}}}", f"\\frac{{{c2}}}{{{ch}}}")[1],
-        "exp": f"$\\tan B = \\frac{{\\text{{đối}}}}{{\\text{{kề}}}} = \\frac{{AC}}{{AB}} = \\frac{{{c2}}}{{{c1}}}$"
+        "q": f"Một cái cây có bóng trên mặt đất dài ${b_cay}m$. Tia sáng mặt trời tạo với mặt đất một góc ${g_cay}^\circ$. Chiều cao của cây gần nhất với kết quả nào dưới đây?",
+        "image": "https://images.unsplash.com/photo-1502082553048-f009c37129b9?q=80&w=400&auto=format&fit=crop",
+        "options": make_options(f"{h_cay}m", f"{round(b_cay/math.tan(math.radians(g_cay)),1)}m", f"{round(b_cay*math.sin(math.radians(g_cay)),1)}m", f"{round(b_cay*math.cos(math.radians(g_cay)),1)}m")[0],
+        "ans": make_options(f"{h_cay}m", f"{round(b_cay/math.tan(math.radians(g_cay)),1)}m", f"{round(b_cay*math.sin(math.radians(g_cay)),1)}m", f"{round(b_cay*math.cos(math.radians(g_cay)),1)}m")[1],
+        "exp": f"Áp dụng tỉ số lượng giác: Chiều cao = Bóng $\\times \tan({g_cay}^\circ) = {b_cay} \\times \tan({g_cay}^\circ) \approx {h_cay}m$."
     })
+    
+    # Câu Máy Bay
+    l_bay = random.randint(5, 12)
+    g_bay = random.choice([20, 25, 30])
+    h_bay = round(l_bay * math.sin(math.radians(g_bay)), 1)
+    exam.append({
+        "q": f"Một chiếc máy bay cất cánh tạo với mặt đất một góc ${g_bay}^\circ$. Sau khi bay được quãng đường ${l_bay}km$, máy bay đang ở độ cao bao nhiêu km so với mặt đất (làm tròn đến chữ số thập phân thứ nhất)?",
+        "image": "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?q=80&w=400&auto=format&fit=crop",
+        "options": make_options(f"{h_bay}", f"{round(l_bay * math.cos(math.radians(g_bay)), 1)}", f"{round(l_bay / math.sin(math.radians(g_bay)), 1)}", f"{round(l_bay * math.tan(math.radians(g_bay)), 1)}")[0],
+        "ans": make_options(f"{h_bay}", f"{round(l_bay * math.cos(math.radians(g_bay)), 1)}", f"{round(l_bay / math.sin(math.radians(g_bay)), 1)}", f"{round(l_bay * math.tan(math.radians(g_bay)), 1)}")[1],
+        "exp": f"Áp dụng tỉ số lượng giác (cạnh đối và cạnh huyền): Độ cao = Quãng đường $\\times \sin({g_bay}^\circ) = {l_bay} \\times \sin({g_bay}^\circ) \approx {h_bay}km$."
+    })
+    
+    # Câu Thang / Tòa nhà
+    h_thang = random.randint(4, 8)
+    exam.append({
+        "q": f"Một cái thang dài ${h_thang}m$ dựa vào tòa nhà, chân thang cách chân tường ${h_thang/2}m$. Hỏi thang tạo với mặt đất một góc bao nhiêu độ?",
+        "image": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=400&auto=format&fit=crop",
+        "options": make_options("60^\circ", "30^\circ", "45^\circ", "75^\circ")[0],
+        "ans": make_options("60^\circ", "30^\circ", "45^\circ", "75^\circ")[1],
+        "exp": f"Gọi $\\alpha$ là góc tạo bởi thang và mặt đất. Ta có $\cos \\alpha = \\frac{{\\text{{Kề}}}}{{\\text{{Huyền}}}} = \\frac{{{h_thang/2}}}{{{h_thang}}} = \\frac{{1}}{{2}} \Rightarrow \\alpha = 60^\circ$."
+    })
+
     exam.append({
         "q": "Rút gọn biểu thức $M = \sin^2 30^\circ + \sin^2 60^\circ$ ta được:",
         "options": make_options("1", "0", "0.5", "2")[0], "ans": make_options("1", "0", "0.5", "2")[1],
         "exp": "Vì $30^\circ + 60^\circ = 90^\circ$ nên $\sin 60^\circ = \cos 30^\circ$. Suy ra $M = \sin^2 30^\circ + \cos^2 30^\circ = 1$."
-    })
-    h_thap = random.randint(10, 20)
-    exam.append({
-        "q": f"Một cái thang dài ${h_thap+2}m$ dựa vào tường tạo với mặt đất một góc $60^\circ$. Hỏi chân thang cách chân tường bao nhiêu mét?",
-        "options": make_options(f"{(h_thap+2)/2}", f"{h_thap+2}", f"{(h_thap+2)*math.sqrt(3)/2}", "Không tính được")[0],
-        "ans": make_options(f"{(h_thap+2)/2}", f"{h_thap+2}", f"{(h_thap+2)*math.sqrt(3)/2}", "Không tính được")[1],
-        "exp": f"Khoảng cách $d = L \cdot \cos 60^\circ = {h_thap+2} \cdot 0.5 = {(h_thap+2)/2}$ m."
-    })
-    exam.append({
-        "q": "Cho $\Delta ABC$ vuông tại $A$, có $\widehat{B} = 30^\circ, BC = 10cm$. Tính cạnh $AB$.",
-        "options": make_options("5\sqrt{3}", "5", "10\sqrt{3}", "10")[0], "ans": make_options("5\sqrt{3}", "5", "10\sqrt{3}", "10")[1],
-        "exp": "$AB = BC \cdot \cos B = 10 \cdot \cos 30^\circ = 10 \cdot \\frac{\sqrt{3}}{2} = 5\sqrt{3}$ cm."
     })
 
     # --- 6. ĐƯỜNG TRÒN (6 CÂU) ---
@@ -451,15 +462,17 @@ def generate_algorithmic_practice():
         "exp": "Ta có $\widehat{ACD} = 90^\circ$ (góc nội tiếp chắn nửa đường tròn) $\Rightarrow DC \perp AC$. Mà $BH \perp AC$ (do $H$ là trực tâm) $\Rightarrow BH \parallel DC$. Tương tự $CH \parallel BD$. Vậy $BHCD$ là hình bình hành."
     })
 
-    # --- 7. HÌNH KHỐI (3 CÂU) ---
+    # --- 7. HÌNH KHỐI (3 CÂU CÓ HÌNH ẢNH) ---
     exam.append({
-        "q": "Diện tích xung quanh của hình trụ có bán kính đáy $r$ và chiều cao $h$ được tính bằng công thức:",
+        "q": "Hình trụ (cylinder) có diện tích xung quanh được tính bằng công thức nào dưới đây?",
+        "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Cylinder_%28geometry%29.png/400px-Cylinder_%28geometry%29.png",
         "options": ["A. $S = 2\pi r h$", "B. $S = \pi r^2 h$", "C. $S = \pi r l$", "D. $S = 4\pi r^2$"], "ans": "A",
         "exp": "Diện tích xung quanh hình trụ là chu vi đáy nhân chiều cao ($2\pi r \cdot h$)."
     })
     r_non = random.randint(3, 5); l_non = random.randint(6, 10)
     exam.append({
-        "q": f"Một hình nón có bán kính đáy $r = {r_non}cm$, đường sinh $l = {l_non}cm$. Diện tích xung quanh của hình nón là:",
+        "q": f"Một hình nón (cone) có bán kính đáy $r = {r_non}cm$, đường sinh $l = {l_non}cm$. Diện tích xung quanh của hình nón là:",
+        "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Cone_3d.png/400px-Cone_3d.png",
         "options": make_options(f"{r_non*l_non}\pi", f"{r_non**2 * l_non}\pi", f"{2*r_non*l_non}\pi", f"{(r_non*l_non)/3}\pi")[0],
         "ans": make_options(f"{r_non*l_non}\pi", f"{r_non**2 * l_non}\pi", f"{2*r_non*l_non}\pi", f"{(r_non*l_non)/3}\pi")[1],
         "exp": f"Áp dụng công thức: $S_{{xq}} = \pi r l = \pi \cdot {r_non} \cdot {l_non} = {r_non*l_non}\pi$."
@@ -470,8 +483,14 @@ def generate_algorithmic_practice():
         "exp": "Thể tích hình cầu bằng $\\frac{4}{3}\pi R^3$."
     })
 
-    # --- 8. THỐNG KÊ XÁC SUẤT (6 CÂU) ---
-    for _ in range(5):
+    # --- 8. THỐNG KÊ XÁC SUẤT (6 CÂU CÓ HÌNH BIỂU ĐỒ) ---
+    exam.append({
+        "q": "Biểu đồ quạt tròn dưới đây dùng để làm gì trong môn Thống kê?",
+        "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Pie-chart.jpg/400px-Pie-chart.jpg",
+        "options": ["A. Biểu diễn tỷ lệ phần trăm các thành phần", "B. Biểu diễn sự thay đổi theo thời gian", "C. Biểu diễn tần số tích lũy", "D. Giải phương trình bậc hai"],
+        "ans": "A", "exp": "Biểu đồ quạt tròn (Pie chart) rất trực quan để so sánh tỷ lệ phần trăm giữa các thành phần trong một tổng thể."
+    })
+    for _ in range(4):
         total = random.randint(20, 50)
         win = random.randint(2, 10)
         q = f"Trong một hộp kín có ${total}$ viên bi kích thước giống nhau, trong đó có ${win}$ viên bi xanh. Lấy ngẫu nhiên 1 viên bi. Xác suất lấy được bi xanh là:"
