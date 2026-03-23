@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V35 (BẢN A1 SUPREME - TÍCH HỢP HÌNH ẢNH TRỰC QUAN) ---
+# --- CẤU HÌNH HỆ THỐNG V36 (BẢN A1 SUPREME - ĐỘNG CƠ TOÁN HỌC VECTOR & ĐA DẠNG HÓA) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -240,12 +240,62 @@ def parse_exam_with_ai(raw_text, api_key):
     return safe_ai_generate(prompt, api_key)
 
 # ==========================================
-# 5. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ KÈM HÌNH ẢNH TRỰC QUAN
+# 5. BỘ CÔNG CỤ VẼ HÌNH ĐỘNG SVG (VECTOR GRAPHICS)
+# Vẽ hình sắc nét 100% dựa trên đúng dữ liệu biến số bài toán
+# ==========================================
+def svg_right_triangle(base_label, height_label, hyp_label, angle_label, obj_name="Cây"):
+    return f"""
+    <div style="display: flex; justify-content: center; margin: 15px 0;">
+    <svg width="220" height="160" viewBox="0 0 220 160" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="30,130 180,130 180,30" style="fill:#f8fafc;stroke:#334155;stroke-width:2" />
+        <polyline points="170,130 170,120 180,120" style="fill:none;stroke:#334155;stroke-width:1.5" />
+        <text x="90" y="148" font-family="Arial" font-size="14" font-weight="bold" fill="#0f172a">{base_label}</text>
+        <text x="188" y="85" font-family="Arial" font-size="14" font-weight="bold" fill="#0f172a">{height_label}</text>
+        <text x="80" y="70" font-family="Arial" font-size="14" font-weight="bold" fill="#0f172a" transform="rotate(-33 80 70)">{hyp_label}</text>
+        <text x="55" y="125" font-family="Arial" font-size="13" font-weight="bold" fill="#dc2626">{angle_label}</text>
+        <path d="M 60 130 A 30 30 0 0 0 50 115" fill="none" stroke="#dc2626" stroke-width="1.5"/>
+    </svg>
+    </div>
+    """
+
+def svg_box_of_balls(color1_name, color1_count, color2_name, color2_count):
+    balls = ""
+    # Map colors mathematically
+    c_map = {"xanh": "#2563eb", "đỏ": "#dc2626", "vàng": "#eab308", "trắng": "#f8fafc"}
+    c1 = c_map.get(color1_name, "#2563eb")
+    c2 = c_map.get(color2_name, "#dc2626")
+    
+    color_list = [c1]*color1_count + [c2]*color2_count
+    random.shuffle(color_list)
+    
+    row, col = 0, 0
+    for color in color_list:
+        cx = 30 + col * 25
+        cy = 30 + row * 25
+        stroke = "#cbd5e1" if color == "#f8fafc" else "none"
+        balls += f'<circle cx="{cx}" cy="{cy}" r="10" fill="{color}" stroke="{stroke}" stroke-width="1"/>'
+        col += 1
+        if col >= 8:
+            col = 0; row += 1
+            
+    box_h = 50 + row * 25
+    return f"""
+    <div style="display: flex; justify-content: center; margin: 15px 0;">
+    <svg width="240" height="{box_h}" viewBox="0 0 240 {box_h}" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="10" width="220" height="{box_h-20}" rx="8" style="fill:#f1f5f9;stroke:#64748b;stroke-width:2" stroke-dasharray="5,5" />
+        {balls}
+    </svg>
+    </div>
+    """
+
+# ==========================================
+# 5. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE)
 # ==========================================
 def generate_algorithmic_practice():
     exam = []
     
     def make_options(*args):
+        # Format đồng bộ toàn bộ đáp án bằng $...$ LaTeX chuẩn
         opts = [f"${str(opt)}$" for opt in args]
         correct_val_formatted = opts[0]
         random.shuffle(opts)
@@ -256,252 +306,295 @@ def generate_algorithmic_practice():
         return formatted_opts, ans_label
 
     # --- 1. CĂN THỨC (6 CÂU) ---
-    a = random.randint(2, 9)
+    a = random.randint(3, 11)
+    b = random.randint(2, 5)
     exam.append({
-        "q": f"Tính giá trị của biểu thức $P = \sqrt{{{a**2}}} + \sqrt{{{(-a)**2}}}$",
-        "options": make_options(2*a, 0, a, -a)[0], "ans": make_options(2*a, 0, a, -a)[1],
-        "exp": f"Ta có $P = {a} + |{-a}| = {a} + {a} = {2*a}$"
+        "q": f"Tính giá trị của biểu thức $P = \sqrt{{{a**2}}} - \sqrt{{{(-b)**2}}}$",
+        "options": make_options(a-b, a+b, -a-b, b-a)[0], "ans": make_options(a-b, a+b, -a-b, b-a)[1],
+        "exp": f"Ta có $P = {a} - |{-b}| = {a} - {b} = {a-b}$."
     })
-    b = random.randint(2, 5); c = random.randint(1, 10)
+    
+    m = random.randint(2, 6); n = random.randint(1, 9)
     exam.append({
-        "q": f"Biểu thức $\sqrt{{{b}x - {c}}}$ xác định khi và chỉ khi:",
-        "options": make_options(f"x \ge \\frac{{{c}}}{{{b}}}", f"x > \\frac{{{c}}}{{{b}}}", f"x \le \\frac{{{c}}}{{{b}}}", f"x \neq \\frac{{{c}}}{{{b}}}")[0],
-        "ans": make_options(f"x \ge \\frac{{{c}}}{{{b}}}", f"x > \\frac{{{c}}}{{{b}}}", f"x \le \\frac{{{c}}}{{{b}}}", f"x \neq \\frac{{{c}}}{{{b}}}")[1],
-        "exp": f"Điều kiện: ${b}x - {c} \ge 0 \Leftrightarrow x \ge \\frac{{{c}}}{{{b}}}$"
+        "q": f"Biểu thức $\sqrt{{{n} - {m}x}}$ xác định khi và chỉ khi:",
+        "options": make_options(f"x \le \\frac{{{n}}}{{{m}}}", f"x \ge \\frac{{{n}}}{{{m}}}", f"x < \\frac{{{n}}}{{{m}}}", f"x > \\frac{{{n}}}{{{m}}}")[0],
+        "ans": make_options(f"x \le \\frac{{{n}}}{{{m}}}", f"x \ge \\frac{{{n}}}{{{m}}}", f"x < \\frac{{{n}}}{{{m}}}", f"x > \\frac{{{n}}}{{{m}}}")[1],
+        "exp": f"Điều kiện: ${n} - {m}x \ge 0 \Leftrightarrow {m}x \le {n} \Leftrightarrow x \le \\frac{{{n}}}{{{m}}}$."
     })
-    k = random.choice([2, 3, 5])
+    
+    k = random.choice([2, 3, 5, 6, 7])
     exam.append({
-        "q": f"Trục căn thức ở mẫu của biểu thức $\\frac{{{k}}}{{\sqrt{{{k}}}}}$ ta được kết quả là:",
-        "options": make_options(f"\sqrt{{{k}}}", f"{k}", f"\\frac{{1}}{{\sqrt{{{k}}}}}", f"{k}\sqrt{{{k}}}")[0],
-        "ans": make_options(f"\sqrt{{{k}}}", f"{k}", f"\\frac{{1}}{{\sqrt{{{k}}}}}", f"{k}\sqrt{{{k}}}")[1],
-        "exp": f"$\\frac{{{k}}}{{\sqrt{{{k}}}}} = \\frac{{\sqrt{{{k}}} \cdot \sqrt{{{k}}}}}{{\sqrt{{{k}}}}} = \sqrt{{{k}}}$"
+        "q": f"Kết quả của phép trục căn thức ở mẫu $\\frac{{{k*2}}}{{\sqrt{{{k}}}}}$ là:",
+        "options": make_options(f"2\sqrt{{{k}}}", f"\sqrt{{{k}}}", f"\\frac{{2}}{{\sqrt{{{k}}}}}", f"{k}\sqrt{{{k}}}")[0],
+        "ans": make_options(f"2\sqrt{{{k}}}", f"\sqrt{{{k}}}", f"\\frac{{2}}{{\sqrt{{{k}}}}}", f"{k}\sqrt{{{k}}}")[1],
+        "exp": f"$\\frac{{{k*2}}}{{\sqrt{{{k}}}}} = \\frac{{{k*2}\sqrt{{{k}}}}}{{{k}}} = 2\sqrt{{{k}}}$."
     })
+    
     exam.append({
-        "q": "Trong các số sau, số nào có giá trị lớn nhất?",
-        "options": ["A. $3\sqrt{2}$", "B. $2\sqrt{3}$", "C. $\sqrt{17}$", "D. $4$"], "ans": "A",
-        "exp": "Ta có $3\sqrt{2} = \sqrt{18}$, $2\sqrt{3} = \sqrt{12}$, $4 = \sqrt{16}$. Số lớn nhất là $\sqrt{18}$."
+        "q": "Khẳng định nào sau đây là đúng?",
+        "options": ["A. $\sqrt{16} + \sqrt{9} = 5$", "B. $\sqrt{16 + 9} = 7$", "C. $\sqrt{16} \cdot \sqrt{9} = 12$", "D. $\sqrt{16 - 9} = \sqrt{7}$"], 
+        "ans": "C", "exp": "Ta có $\sqrt{16} \cdot \sqrt{9} = 4 \cdot 3 = 12$."
     })
-    p = random.randint(1, 4)
+    
+    p = random.randint(2, 6)
     exam.append({
-        "q": f"Nghiệm của phương trình $\sqrt{{x}} = {p}$ là:",
-        "options": make_options(p**2, p, f"\sqrt{{{p}}}", f"\pm {p**2}")[0], "ans": make_options(p**2, p, f"\sqrt{{{p}}}", f"\pm {p**2}")[1],
-        "exp": f"Bình phương hai vế (với $x \ge 0$), ta được $x = {p}^2 = {p**2}$"
+        "q": f"Phương trình $\sqrt{{2x - 1}} = {p}$ có nghiệm là:",
+        "options": make_options(f"\\frac{{{p**2+1}}}{{2}}", f"\\frac{{{p**2-1}}}{{2}}", f"{p**2+1}", f"{p**2-1}")[0],
+        "ans": make_options(f"\\frac{{{p**2+1}}}{{2}}", f"\\frac{{{p**2-1}}}{{2}}", f"{p**2+1}", f"{p**2-1}")[1],
+        "exp": f"Bình phương hai vế: $2x - 1 = {p**2} \Leftrightarrow 2x = {p**2+1} \Leftrightarrow x = \\frac{{{p**2+1}}}{{2}}$."
     })
+    
     exam.append({
-        "q": "Rút gọn biểu thức $M = \sqrt{(1-\sqrt{3})^2} - \sqrt{3}$",
-        "options": make_options("-1", "1", "2\sqrt{3}-1", "1-2\sqrt{3}")[0], "ans": make_options("-1", "1", "2\sqrt{3}-1", "1-2\sqrt{3}")[1],
-        "exp": "$M = |1-\sqrt{3}| - \sqrt{3} = (\sqrt{3} - 1) - \sqrt{3} = -1$."
+        "q": "Rút gọn biểu thức $M = \sqrt{(2-\sqrt{5})^2} + \sqrt{5}$",
+        "options": make_options("2", "2\sqrt{5}-2", "2\sqrt{5}+2", "-2")[0], "ans": make_options("2", "2\sqrt{5}-2", "2\sqrt{5}+2", "-2")[1],
+        "exp": "Vì $2 = \sqrt{4} < \sqrt{5}$ nên $2-\sqrt{5} < 0$. Do đó $M = -(2-\sqrt{5}) + \sqrt{5} = \sqrt{5} - 2 + \sqrt{5} = 2\sqrt{5} - 2$. Wait, đáp án đúng là $2\sqrt{5}-2$." 
     })
+    # Fix the exp logic dynamically to ensure it aligns
+    exam[-1]["exp"] = "Vì $2 < \sqrt{5}$ nên $\sqrt{(2-\sqrt{5})^2} = \sqrt{5}-2$. Vậy $M = \sqrt{5}-2 + \sqrt{5} = 2\sqrt{5}-2$."
+    exam[-1]["options"], exam[-1]["ans"] = make_options("2\sqrt{5}-2", "2", "-2", "4\sqrt{5}")
 
     # --- 2. HÀM SỐ y = ax^2 (3 CÂU) ---
-    a = random.choice([-2, -1, 2, 3])
+    a2 = random.choice([-4, -2, 2, 4])
     x0 = random.randint(1, 3)
     exam.append({
-        "q": f"Điểm nào sau đây thuộc đồ thị hàm số $y = {a}x^2$?",
-        "options": make_options(f"({x0}; {a*x0**2})", f"({x0}; {-a*x0**2})", f"({-x0}; {-a*x0**2})", f"(0; {a})")[0],
-        "ans": make_options(f"({x0}; {a*x0**2})", f"({x0}; {-a*x0**2})", f"({-x0}; {-a*x0**2})", f"(0; {a})")[1],
-        "exp": f"Thay tọa độ các điểm vào phương trình hàm số ta thấy điểm $({x0}; {a*x0**2})$ thỏa mãn."
+        "q": f"Biết điểm $A({x0}; y_0)$ thuộc đồ thị hàm số $y = {a2}x^2$. Giá trị của $y_0$ là:",
+        "options": make_options(a2*(x0**2), -a2*(x0**2), a2*x0, -a2*x0)[0],
+        "ans": make_options(a2*(x0**2), -a2*(x0**2), a2*x0, -a2*x0)[1],
+        "exp": f"Thay $x = {x0}$ vào hàm số: $y_0 = {a2} \cdot ({x0})^2 = {a2*(x0**2)}$."
     })
-    is_up = "đồng biến" if a > 0 else "nghịch biến"
+    
+    is_up = "đồng biến" if a2 > 0 else "nghịch biến"
     exam.append({
-        "q": f"Hàm số $y = {a}x^2$ có tính chất nào sau đây?",
-        "options": [f"A. Đồng biến khi $x > 0$" if a>0 else f"A. Nghịch biến khi $x > 0$", 
-                    f"B. Đồng biến khi $x < 0$" if a>0 else f"B. Nghịch biến khi $x < 0$",
+        "q": f"Hàm số $y = {a2}x^2$ có tính chất nào sau đây?",
+        "options": [f"A. Đồng biến khi $x > 0$" if a2>0 else f"A. Nghịch biến khi $x > 0$", 
+                    f"B. Đồng biến khi $x < 0$" if a2>0 else f"B. Nghịch biến khi $x < 0$",
                     "C. Luôn đồng biến trên $\mathbb{R}$", "D. Luôn nghịch biến trên $\mathbb{R}$"],
         "ans": "A",
-        "exp": f"Vì hệ số $a = {a}$, hàm số {is_up} khi $x > 0$."
+        "exp": f"Vì hệ số $a = {a2} {' > 0' if a2>0 else '< 0'}$, hàm số {is_up} khi $x > 0$."
     })
+    
     exam.append({
-        "q": f"Số giao điểm của parabol $(P): y = x^2$ và đường thẳng $(d): y = 2x - 1$ là:",
+        "q": f"Đồ thị hàm số $y = x^2$ và đường thẳng $y = -2x - 1$ có bao nhiêu điểm chung?",
         "options": make_options("1", "2", "0", "Vô số")[0], "ans": make_options("1", "2", "0", "Vô số")[1],
-        "exp": "Xét pt hoành độ giao điểm: $x^2 - 2x + 1 = 0 \Leftrightarrow (x-1)^2 = 0$. Pt có nghiệm kép nên cắt nhau tại 1 điểm."
+        "exp": "Xét pt hoành độ giao điểm: $x^2 + 2x + 1 = 0 \Leftrightarrow (x+1)^2 = 0$. Phương trình có nghiệm kép nên có 1 điểm chung."
     })
 
     # --- 3. PHƯƠNG TRÌNH & HỆ PHƯƠNG TRÌNH (8 CÂU) ---
+    c_pt = random.randint(2, 6)
     exam.append({
-        "q": "Phương trình $x^2 - 5x + 6 = 0$ có tập nghiệm là:",
-        "options": make_options("\{2; 3\}", "\{-2; -3\}", "\{1; 6\}", "\{-1; -6\}")[0], "ans": make_options("\{2; 3\}", "\{-2; -3\}", "\{1; 6\}", "\{-1; -6\}")[1],
-        "exp": "Nhẩm nghiệm hoặc dùng máy tính ta được $x_1=2, x_2=3$."
+        "q": f"Tập nghiệm của phương trình $x^2 - {(c_pt+1)}x + {c_pt} = 0$ là:",
+        "options": make_options(f"\\{{1; {c_pt}\\}}", f"\\{{-1; -{c_pt}\\}}", f"\\{{0; {c_pt}\\}}", f"\\{{1; -{c_pt}\\}}")[0], 
+        "ans": make_options(f"\\{{1; {c_pt}\\}}", f"\\{{-1; -{c_pt}\\}}", f"\\{{0; {c_pt}\\}}", f"\\{{1; -{c_pt}\\}}")[1],
+        "exp": f"Nhận thấy $a+b+c = 1 - {(c_pt+1)} + {c_pt} = 0$. Phương trình có nghiệm $x_1 = 1, x_2 = {c_pt}$."
     })
-    S = random.randint(2, 7)
+    
+    S = random.randint(3, 9)
+    P = random.randint(-10, 10)
+    s_str = f"- {S}x" if S > 0 else f"+ {-S}x"
+    p_str = f"+ {P}" if P > 0 else f"- {-P}"
     exam.append({
-        "q": f"Gọi $x_1, x_2$ là nghiệm của phương trình $x^2 - {S}x + 1 = 0$. Giá trị của $x_1 + x_2$ là:",
-        "options": make_options(S, -S, 1, -1)[0], "ans": make_options(S, -S, 1, -1)[1],
-        "exp": f"Theo định lý Vi-ét: $S = x_1 + x_2 = -\\frac{{b}}{{a}} = {S}$"
+        "q": f"Gọi $x_1, x_2$ là nghiệm của phương trình $x^2 {s_str} {p_str} = 0$. Giá trị của biểu thức $x_1 + x_2$ là:",
+        "options": make_options(S, -S, P, -P)[0], "ans": make_options(S, -S, P, -P)[1],
+        "exp": f"Theo hệ thức Vi-ét: $x_1 + x_2 = -\\frac{{b}}{{a}} = {S}$."
     })
-    P = random.randint(-5, 5)
-    p_str = f"+ {P}" if P>0 else f"- {-P}"
+    
     exam.append({
-        "q": f"Gọi $x_1, x_2$ là nghiệm của phương trình $x^2 - 3x {p_str} = 0$. Giá trị của $x_1.x_2$ là:",
-        "options": make_options(P, -P, 3, -3)[0], "ans": make_options(P, -P, 3, -3)[1],
-        "exp": f"Theo định lý Vi-ét: $P = x_1.x_2 = \\frac{{c}}{{a}} = {P}$"
+        "q": f"Gọi $x_1, x_2$ là nghiệm của phương trình $x^2 {s_str} {p_str} = 0$. Giá trị của $x_1 \cdot x_2$ là:",
+        "options": make_options(P, -P, S, -S)[0], "ans": make_options(P, -P, S, -S)[1],
+        "exp": f"Theo hệ thức Vi-ét: $x_1 \cdot x_2 = \\frac{{c}}{{a}} = {P}$."
     })
+    
     exam.append({
-        "q": "Nghiệm của hệ phương trình $\\begin{cases} x + y = 3 \\\\ x - y = 1 \end{cases}$ là:",
-        "options": make_options("(2; 1)", "(1; 2)", "(3; 0)", "(4; -1)")[0], "ans": make_options("(2; 1)", "(1; 2)", "(3; 0)", "(4; -1)")[1],
-        "exp": "Cộng hai phương trình ta được $2x = 4 \Rightarrow x = 2$. Thay vào phương trình đầu ta được $y = 1$."
+        "q": "Nghiệm của hệ phương trình $\\begin{cases} 2x - y = 4 \\\\ x + y = 5 \end{cases}$ là:",
+        "options": make_options("(3; 2)", "(2; 3)", "(1; -2)", "(-3; -2)")[0], "ans": make_options("(3; 2)", "(2; 3)", "(1; -2)", "(-3; -2)")[1],
+        "exp": "Cộng vế theo vế ta được $3x = 9 \Rightarrow x = 3$. Thay vào pt (2) suy ra $y = 2$."
     })
+    
     exam.append({
-        "q": "Phương trình $x^4 - 3x^2 - 4 = 0$ có bao nhiêu nghiệm thực?",
-        "options": make_options("2", "4", "0", "1")[0], "ans": make_options("2", "4", "0", "1")[1],
-        "exp": "Đặt $t = x^2 (t \ge 0)$, phương trình thành $t^2 - 3t - 4 = 0 \Rightarrow t = -1$ (loại) hoặc $t = 4$ (nhận). Với $t=4 \Rightarrow x = \pm 2$. Có 2 nghiệm."
+        "q": "Số nghiệm của phương trình $x^4 - 5x^2 + 4 = 0$ là:",
+        "options": make_options("4", "2", "0", "1")[0], "ans": make_options("4", "2", "0", "1")[1],
+        "exp": "Đặt $t = x^2 \ge 0$, pt trở thành $t^2 - 5t + 4 = 0$. Có nghiệm $t=1$ và $t=4$. Từ đó suy ra $x = \pm 1$ và $x = \pm 2$. Vậy có 4 nghiệm."
     })
+    
     exam.append({
-        "q": "Phương trình $x^2 - 2x + m = 0$ có nghiệm kép khi và chỉ khi:",
-        "options": make_options("m = 1", "m = -1", "m > 1", "m < 1")[0], "ans": make_options("m = 1", "m = -1", "m > 1", "m < 1")[1],
-        "exp": "$\Delta' = (-1)^2 - 1.m = 1 - m$. Phương trình có nghiệm kép khi $\Delta' = 0 \Leftrightarrow m = 1$"
+        "q": "Điều kiện của tham số $m$ để phương trình $x^2 - 2x + m - 3 = 0$ có nghiệm kép là:",
+        "options": make_options("m = 4", "m = -4", "m = 2", "m = -2")[0], "ans": make_options("m = 4", "m = -4", "m = 2", "m = -2")[1],
+        "exp": "$\Delta' = (-1)^2 - 1(m-3) = 4 - m$. Để phương trình có nghiệm kép thì $\Delta' = 0 \Leftrightarrow m = 4$."
     })
+    
     exam.append({
-        "q": "Cho phương trình $x^2 - 4x + 2 = 0$ có hai nghiệm $x_1, x_2$. Giá trị của biểu thức $A = x_1^2 + x_2^2$ bằng:",
-        "options": make_options("12", "16", "20", "8")[0], "ans": make_options("12", "16", "20", "8")[1],
-        "exp": "$A = (x_1+x_2)^2 - 2x_1x_2 = 4^2 - 2.2 = 16 - 4 = 12$"
+        "q": "Cho phương trình $x^2 - 3x + 1 = 0$ có hai nghiệm $x_1, x_2$. Giá trị của biểu thức $T = x_1^2 + x_2^2$ bằng:",
+        "options": make_options("7", "9", "11", "5")[0], "ans": make_options("7", "9", "11", "5")[1],
+        "exp": "Theo Vi-ét: $S = 3, P = 1$. Ta có $T = S^2 - 2P = 3^2 - 2(1) = 7$."
     })
+    
+    c_nguyen = random.randint(1, 5)
     exam.append({
-        "q": "Số cặp số nguyên $(x; y)$ thỏa mãn phương trình $xy - x - y = 2$ là:",
-        "options": make_options("4", "2", "6", "Vô số")[0], "ans": make_options("4", "2", "6", "Vô số")[1],
-        "exp": "Biến đổi: $x(y-1) - (y-1) = 3 \Leftrightarrow (x-1)(y-1) = 3$. Các ước của 3 là $\pm 1, \pm 3$ nên có 4 hệ phương trình tương ứng với 4 cặp nghiệm."
+        "q": f"Số cặp nghiệm nguyên $(x; y)$ thỏa mãn phương trình $x y - 2x - y = {c_nguyen}$ là:",
+        "options": make_options("4" if c_nguyen+2 in [3,5,7] else "6", "2", "8", "Vô số")[0], 
+        "ans": make_options("4" if c_nguyen+2 in [3,5,7] else "6", "2", "8", "Vô số")[1],
+        "exp": f"Biến đổi pt thành $x(y-2) - (y-2) = {c_nguyen+2} \Leftrightarrow (x-1)(y-2) = {c_nguyen+2}$. Dựa vào số ước nguyên của ${c_nguyen+2}$ để tìm số cặp nghiệm."
     })
 
     # --- 4. BẤT PHƯƠNG TRÌNH (3 CÂU) ---
     exam.append({
-        "q": "Tập nghiệm của bất phương trình $2x - 6 > 0$ là:",
-        "options": make_options("x > 3", "x < 3", "x \ge 3", "x \le 3")[0], "ans": make_options("x > 3", "x < 3", "x \ge 3", "x \le 3")[1],
-        "exp": "$2x > 6 \Leftrightarrow x > 3$"
+        "q": "Tập nghiệm của bất phương trình $-3x + 12 > 0$ là:",
+        "options": make_options("x < 4", "x > 4", "x \ge 4", "x \le 4")[0], "ans": make_options("x < 4", "x > 4", "x \ge 4", "x \le 4")[1],
+        "exp": "$-3x > -12$. Chia hai vế cho số âm phải đổi chiều $\Rightarrow x < 4$."
     })
+    
     exam.append({
-        "q": "Số nguyên lớn nhất thỏa mãn bất phương trình $10 - 3x > 0$ là:",
-        "options": make_options("3", "4", "2", "1")[0], "ans": make_options("3", "4", "2", "1")[1],
-        "exp": "$3x < 10 \Leftrightarrow x < 3.33$. Số nguyên lớn nhất là 3."
+        "q": "Nghiệm nguyên âm lớn nhất thỏa mãn bất phương trình $2x + 5 > 0$ là:",
+        "options": make_options("-2", "-1", "-3", "-4")[0], "ans": make_options("-2", "-1", "-3", "-4")[1],
+        "exp": "$2x > -5 \Leftrightarrow x > -2.5$. Số nguyên âm lớn nhất thỏa mãn là $-2$."
     })
+    
     exam.append({
-        "q": "Tìm tất cả các giá trị của $m$ để hàm số bậc nhất $y = (2m-4)x + 5$ đồng biến trên $\mathbb{R}$.",
-        "options": make_options("m > 2", "m < 2", "m \ge 2", "m \neq 2")[0], "ans": make_options("m > 2", "m < 2", "m \ge 2", "m \neq 2")[1],
-        "exp": "Hàm số đồng biến khi hệ số góc $a > 0 \Leftrightarrow 2m - 4 > 0 \Leftrightarrow m > 2$."
+        "q": "Tìm tất cả các giá trị của tham số $m$ để hàm số $y = (5 - 2m)x + 1$ nghịch biến trên $\mathbb{R}$.",
+        "options": make_options("m > \\frac{5}{2}", "m < \\frac{5}{2}", "m \ge \\frac{5}{2}", "m \neq \\frac{5}{2}")[0], 
+        "ans": make_options("m > \\frac{5}{2}", "m < \\frac{5}{2}", "m \ge \\frac{5}{2}", "m \neq \\frac{5}{2}")[1],
+        "exp": "Hàm số nghịch biến khi hệ số góc $a < 0 \Leftrightarrow 5 - 2m < 0 \Leftrightarrow 2m > 5 \Leftrightarrow m > \\frac{5}{2}$."
     })
 
-    # --- 5. HỆ THỨC LƯỢNG (5 CÂU CÓ HÌNH ẢNH TRỰC QUAN) ---
+    # --- 5. HỆ THỨC LƯỢNG (5 CÂU KÈM HÌNH ẢNH DYNAMIC SVG) ---
     exam.append({
-        "q": "Cho $\Delta ABC$ vuông tại $A$, đường cao $AH$. Khẳng định nào sau đây SAI?",
-        "options": ["A. $AH^2 = HB.HC$", "B. $AB^2 = BH.BC$", "C. $AH.BC = AB.AC$", "D. $\\frac{1}{AH} = \\frac{1}{AB} + \\frac{1}{AC}$"],
-        "ans": "D", "exp": "Công thức đúng phải là bình phương: $\\frac{1}{AH^2} = \\frac{1}{AB^2} + \\frac{1}{AC^2}$."
+        "q": "Trong tam giác vuông, bình phương đường cao ứng với cạnh huyền bằng:",
+        "options": ["A. Tích hai hình chiếu của hai cạnh góc vuông trên cạnh huyền", "B. Tích hai cạnh góc vuông", "C. Tích cạnh huyền và đường cao", "D. Tổng bình phương hai cạnh góc vuông"],
+        "ans": "A", "exp": "Lý thuyết cơ bản: $h^2 = b' \cdot c'$."
     })
     
-    # Câu Cái Cây
-    b_cay = random.randint(3, 8)
-    g_cay = random.choice([30, 45, 60])
-    h_cay = round(b_cay * math.tan(math.radians(g_cay)), 1)
+    # 1. Câu Cột cờ / Tòa nhà / Cây (Đổi ngữ cảnh ngẫu nhiên)
+    obj_names = ["tòa nhà", "cột cờ", "tháp hải đăng", "cái cây"]
+    obj = random.choice(obj_names)
+    b_obj = random.randint(4, 15)
+    g_obj = random.choice([30, 45, 60])
+    h_obj = round(b_obj * math.tan(math.radians(g_obj)), 1)
     exam.append({
-        "q": f"Một cái cây có bóng trên mặt đất dài ${b_cay}m$. Tia sáng mặt trời tạo với mặt đất một góc ${g_cay}^\circ$. Chiều cao của cây gần nhất với kết quả nào dưới đây?",
-        "image": "https://images.unsplash.com/photo-1502082553048-f009c37129b9?q=80&w=400&auto=format&fit=crop",
-        "options": make_options(f"{h_cay}m", f"{round(b_cay/math.tan(math.radians(g_cay)),1)}m", f"{round(b_cay*math.sin(math.radians(g_cay)),1)}m", f"{round(b_cay*math.cos(math.radians(g_cay)),1)}m")[0],
-        "ans": make_options(f"{h_cay}m", f"{round(b_cay/math.tan(math.radians(g_cay)),1)}m", f"{round(b_cay*math.sin(math.radians(g_cay)),1)}m", f"{round(b_cay*math.cos(math.radians(g_cay)),1)}m")[1],
-        "exp": f"Áp dụng tỉ số lượng giác: Chiều cao = Bóng $\\times \tan({g_cay}^\circ) = {b_cay} \\times \tan({g_cay}^\circ) \approx {h_cay}m$."
+        "q": f"Bóng của một {obj} trên mặt đất dài ${b_obj}m$. Tia sáng mặt trời tạo với mặt đất một góc ${g_obj}^\circ$. Chiều cao của {obj} xấp xỉ bằng:",
+        "svg": svg_right_triangle(base_label=f"{b_obj}m", height_label="? m", hyp_label="Tia sáng", angle_label=f"{g_obj}°", obj_name=obj),
+        "options": make_options(f"{h_obj}m", f"{round(b_obj/math.tan(math.radians(g_obj)),1)}m", f"{round(b_obj*math.sin(math.radians(g_obj)),1)}m", f"{round(b_obj*math.cos(math.radians(g_obj)),1)}m")[0],
+        "ans": make_options(f"{h_obj}m", f"{round(b_obj/math.tan(math.radians(g_obj)),1)}m", f"{round(b_obj*math.sin(math.radians(g_obj)),1)}m", f"{round(b_obj*math.cos(math.radians(g_obj)),1)}m")[1],
+        "exp": f"Áp dụng tỉ số lượng giác: Chiều cao = Bóng $\\times \\tan({g_obj}^\circ) = {b_obj} \\times \\tan({g_obj}^\circ) \approx {h_obj}m$."
     })
     
-    # Câu Máy Bay
-    l_bay = random.randint(5, 12)
+    # 2. Câu Máy Bay
+    l_bay = random.randint(4, 15)
     g_bay = random.choice([20, 25, 30])
     h_bay = round(l_bay * math.sin(math.radians(g_bay)), 1)
     exam.append({
-        "q": f"Một chiếc máy bay cất cánh tạo với mặt đất một góc ${g_bay}^\circ$. Sau khi bay được quãng đường ${l_bay}km$, máy bay đang ở độ cao bao nhiêu km so với mặt đất (làm tròn đến chữ số thập phân thứ nhất)?",
-        "image": "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?q=80&w=400&auto=format&fit=crop",
+        "q": f"Một chiếc máy bay cất cánh theo đường thẳng tạo với mặt đất góc ${g_bay}^\circ$. Sau khi bay được ${l_bay}km$, máy bay đang ở độ cao bao nhiêu km?",
+        "svg": svg_right_triangle(base_label="Mặt đất", height_label="? km", hyp_label=f"{l_bay}km", angle_label=f"{g_bay}°", obj_name="Máy bay"),
         "options": make_options(f"{h_bay}", f"{round(l_bay * math.cos(math.radians(g_bay)), 1)}", f"{round(l_bay / math.sin(math.radians(g_bay)), 1)}", f"{round(l_bay * math.tan(math.radians(g_bay)), 1)}")[0],
         "ans": make_options(f"{h_bay}", f"{round(l_bay * math.cos(math.radians(g_bay)), 1)}", f"{round(l_bay / math.sin(math.radians(g_bay)), 1)}", f"{round(l_bay * math.tan(math.radians(g_bay)), 1)}")[1],
-        "exp": f"Áp dụng tỉ số lượng giác (cạnh đối và cạnh huyền): Độ cao = Quãng đường $\\times \sin({g_bay}^\circ) = {l_bay} \\times \sin({g_bay}^\circ) \approx {h_bay}km$."
+        "exp": f"Độ cao = Quãng đường $\\times \\sin({g_bay}^\circ) = {l_bay} \\times \\sin({g_bay}^\circ) \approx {h_bay}km$."
     })
     
-    # Câu Thang / Tòa nhà
-    h_thang = random.randint(4, 8)
+    # 3. Câu Thang
+    h_thang = random.randint(4, 10)
     exam.append({
-        "q": f"Một cái thang dài ${h_thang}m$ dựa vào tòa nhà, chân thang cách chân tường ${h_thang/2}m$. Hỏi thang tạo với mặt đất một góc bao nhiêu độ?",
-        "image": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=400&auto=format&fit=crop",
+        "q": f"Một cái thang dài ${h_thang}m$ dựa vào tường. Biết chân thang cách tường ${h_thang/2}m$. Góc tạo bởi thang và mặt đất là:",
+        "svg": svg_right_triangle(base_label=f"{h_thang/2}m", height_label="Tường", hyp_label=f"{h_thang}m", angle_label="? °", obj_name="Thang"),
         "options": make_options("60^\circ", "30^\circ", "45^\circ", "75^\circ")[0],
         "ans": make_options("60^\circ", "30^\circ", "45^\circ", "75^\circ")[1],
-        "exp": f"Gọi $\\alpha$ là góc tạo bởi thang và mặt đất. Ta có $\cos \\alpha = \\frac{{\\text{{Kề}}}}{{\\text{{Huyền}}}} = \\frac{{{h_thang/2}}}{{{h_thang}}} = \\frac{{1}}{{2}} \Rightarrow \\alpha = 60^\circ$."
+        "exp": f"Gọi $\\alpha$ là góc tạo bởi thang và mặt đất. $\\cos \\alpha = \\frac{{\\text{{kề}}}}{{\\text{{huyền}}}} = \\frac{{{h_thang/2}}}{{{h_thang}}} = \\frac{{1}}{{2}} \Rightarrow \\alpha = 60^\circ$."
     })
 
     exam.append({
-        "q": "Rút gọn biểu thức $M = \sin^2 30^\circ + \sin^2 60^\circ$ ta được:",
+        "q": "Giá trị của biểu thức $T = \cos^2 25^\circ + \cos^2 65^\circ$ bằng:",
         "options": make_options("1", "0", "0.5", "2")[0], "ans": make_options("1", "0", "0.5", "2")[1],
-        "exp": "Vì $30^\circ + 60^\circ = 90^\circ$ nên $\sin 60^\circ = \cos 30^\circ$. Suy ra $M = \sin^2 30^\circ + \cos^2 30^\circ = 1$."
+        "exp": "Vì hai góc phụ nhau nên $\cos 65^\circ = \sin 25^\circ$. Vậy $T = \cos^2 25^\circ + \sin^2 25^\circ = 1$."
     })
 
     # --- 6. ĐƯỜNG TRÒN (6 CÂU) ---
     exam.append({
         "q": "Góc nội tiếp chắn nửa đường tròn có số đo là:",
         "options": make_options("90^\circ", "180^\circ", "60^\circ", "120^\circ")[0], "ans": make_options("90^\circ", "180^\circ", "60^\circ", "120^\circ")[1],
-        "exp": "Tính chất cơ bản: Góc nội tiếp chắn nửa đường tròn luôn là góc vuông ($90^\circ$)."
+        "exp": "Tính chất SGK: Góc nội tiếp chắn nửa đường tròn là góc vuông ($90^\circ$)."
     })
-    g_tam = random.randint(50, 100)
+    
+    g_tam = random.randint(60, 120)
     exam.append({
-        "q": f"Trên đường tròn $(O)$, góc ở tâm $\widehat{{AOB}} = {g_tam}^\circ$. Số đo cung nhỏ $AB$ là:",
+        "q": f"Cho đường tròn $(O)$, góc ở tâm $\widehat{{MON}} = {g_tam}^\circ$. Số đo cung nhỏ $MN$ là:",
         "options": make_options(f"{g_tam}^\circ", f"{g_tam/2}^\circ", f"{180-g_tam}^\circ", f"{360-g_tam}^\circ")[0],
         "ans": make_options(f"{g_tam}^\circ", f"{g_tam/2}^\circ", f"{180-g_tam}^\circ", f"{360-g_tam}^\circ")[1],
         "exp": "Số đo cung nhỏ bằng đúng số đo góc ở tâm chắn cung đó."
     })
+    
     exam.append({
-        "q": "Tứ giác $ABCD$ nội tiếp đường tròn. Nếu $\widehat{A} = 70^\circ$ thì số đo góc $\widehat{C}$ đối diện với nó là:",
-        "options": make_options("110^\circ", "70^\circ", "90^\circ", "20^\circ")[0], "ans": make_options("110^\circ", "70^\circ", "90^\circ", "20^\circ")[1],
-        "exp": "Trong tứ giác nội tiếp, tổng hai góc đối diện bằng $180^\circ$. Suy ra $\widehat{C} = 180^\circ - 70^\circ = 110^\circ$."
+        "q": "Tứ giác $ABCD$ nội tiếp đường tròn. Nếu góc $\widehat{A} = 85^\circ$ thì góc $\widehat{C}$ đối diện với nó bằng:",
+        "options": make_options("95^\circ", "85^\circ", "105^\circ", "15^\circ")[0], "ans": make_options("95^\circ", "85^\circ", "105^\circ", "15^\circ")[1],
+        "exp": "Trong tứ giác nội tiếp, tổng hai góc đối bằng $180^\circ \Rightarrow \widehat{C} = 180^\circ - 85^\circ = 95^\circ$."
     })
-    r_tron = random.randint(3, 8)
+    
+    r_tron = random.randint(4, 9)
     exam.append({
-        "q": f"Độ dài đường tròn có bán kính $R = {r_tron}cm$ là:",
+        "q": f"Chu vi của đường tròn có bán kính $R = {r_tron}cm$ là:",
         "options": make_options(f"{2*r_tron}\pi", f"{r_tron}\pi", f"{r_tron**2}\pi", f"{(r_tron**2)/2}\pi")[0],
         "ans": make_options(f"{2*r_tron}\pi", f"{r_tron}\pi", f"{r_tron**2}\pi", f"{(r_tron**2)/2}\pi")[1],
-        "exp": f"Chu vi $C = 2\pi R = 2 \cdot \pi \cdot {r_tron} = {2*r_tron}\pi$ (cm)."
+        "exp": f"Chu vi $C = 2\pi R = 2\pi({r_tron}) = {2*r_tron}\pi$."
     })
+    
+    d_day = random.choice([6, 8, 12])
+    r_tron2 = random.choice([5, 10])
+    h_kc = math.sqrt(r_tron2**2 - (d_day/2)**2)
     exam.append({
-        "q": "Cho đường tròn tâm $O$ bán kính $5cm$ và dây cung $AB = 8cm$. Khoảng cách từ tâm $O$ đến dây $AB$ là:",
-        "options": make_options("3cm", "4cm", "5cm", "6cm")[0], "ans": make_options("3cm", "4cm", "5cm", "6cm")[1],
-        "exp": "Gọi $H$ là trung điểm $AB \Rightarrow AH = 4cm$. Xét $\Delta OAH$ vuông tại $H$: $OH = \sqrt{OA^2 - AH^2} = \sqrt{5^2 - 4^2} = 3cm$."
+        "q": f"Cho đường tròn tâm $O$ bán kính ${r_tron2}cm$ và dây cung $AB = {d_day}cm$. Khoảng cách từ tâm $O$ đến dây $AB$ là:",
+        "options": make_options(f"{int(h_kc)}cm", f"{int(h_kc)+1}cm", f"{int(h_kc)-1}cm", f"{int(h_kc)+2}cm")[0], 
+        "ans": make_options(f"{int(h_kc)}cm", f"{int(h_kc)+1}cm", f"{int(h_kc)-1}cm", f"{int(h_kc)+2}cm")[1],
+        "exp": f"Gọi $H$ là trung điểm $AB \Rightarrow AH = {d_day/2}cm$. Áp dụng Pytago cho $\Delta OAH$: $OH = \sqrt{{{r_tron2}^2 - {(d_day/2)}^2}} = {int(h_kc)}cm$."
     })
+    
     exam.append({
-        "q": "Cho tam giác nhọn $ABC$ nội tiếp đường tròn $(O)$, trực tâm $H$. Kẻ đường kính $AD$. Tứ giác $BHCD$ là hình gì?",
-        "options": ["A. Hình bình hành", "B. Hình chữ nhật", "C. Hình thoi", "D. Hình thang cân"], "ans": "A",
-        "exp": "Ta có $\widehat{ACD} = 90^\circ$ (góc nội tiếp chắn nửa đường tròn) $\Rightarrow DC \perp AC$. Mà $BH \perp AC$ (do $H$ là trực tâm) $\Rightarrow BH \parallel DC$. Tương tự $CH \parallel BD$. Vậy $BHCD$ là hình bình hành."
+        "q": "Cho hai tiếp tuyến $AB$ và $AC$ cắt nhau tại $A$ (với $B, C$ là tiếp điểm). Khẳng định nào sau đây là ĐÚNG?",
+        "options": ["A. $AB = AC$", "B. $AB \perp AC$", "C. $AB > AC$", "D. $AO \perp BC$ tại trọng tâm"], "ans": "A",
+        "exp": "Theo tính chất hai tiếp tuyến cắt nhau, khoảng cách từ giao điểm đến hai tiếp điểm là bằng nhau."
     })
 
-    # --- 7. HÌNH KHỐI (3 CÂU CÓ HÌNH ẢNH) ---
+    # --- 7. HÌNH KHỐI (3 CÂU) ---
     exam.append({
-        "q": "Hình trụ (cylinder) có diện tích xung quanh được tính bằng công thức nào dưới đây?",
-        "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Cylinder_%28geometry%29.png/400px-Cylinder_%28geometry%29.png",
-        "options": ["A. $S = 2\pi r h$", "B. $S = \pi r^2 h$", "C. $S = \pi r l$", "D. $S = 4\pi r^2$"], "ans": "A",
-        "exp": "Diện tích xung quanh hình trụ là chu vi đáy nhân chiều cao ($2\pi r \cdot h$)."
+        "q": "Công thức tính diện tích toàn phần của hình trụ có bán kính đáy $r$ và chiều cao $h$ là:",
+        "options": ["A. $S_{tp} = 2\pi r h + 2\pi r^2$", "B. $S_{tp} = \pi r^2 h$", "C. $S_{tp} = \pi r l + \pi r^2$", "D. $S_{tp} = 4\pi r^2$"], "ans": "A",
+        "exp": "Diện tích toàn phần bằng tổng diện tích xung quanh và diện tích hai đáy: $2\pi r h + 2\pi r^2$."
     })
+    
     r_non = random.randint(3, 5); l_non = random.randint(6, 10)
     exam.append({
-        "q": f"Một hình nón (cone) có bán kính đáy $r = {r_non}cm$, đường sinh $l = {l_non}cm$. Diện tích xung quanh của hình nón là:",
-        "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Cone_3d.png/400px-Cone_3d.png",
+        "q": f"Một hình nón có bán kính đáy $r = {r_non}cm$, đường sinh $l = {l_non}cm$. Diện tích xung quanh của hình nón là:",
         "options": make_options(f"{r_non*l_non}\pi", f"{r_non**2 * l_non}\pi", f"{2*r_non*l_non}\pi", f"{(r_non*l_non)/3}\pi")[0],
         "ans": make_options(f"{r_non*l_non}\pi", f"{r_non**2 * l_non}\pi", f"{2*r_non*l_non}\pi", f"{(r_non*l_non)/3}\pi")[1],
-        "exp": f"Áp dụng công thức: $S_{{xq}} = \pi r l = \pi \cdot {r_non} \cdot {l_non} = {r_non*l_non}\pi$."
+        "exp": f"Công thức $S_{{xq}} = \pi r l = \pi \cdot {r_non} \cdot {l_non} = {r_non*l_non}\pi$."
     })
+    
     exam.append({
-        "q": "Thể tích của một hình cầu có bán kính $R$ là:",
+        "q": "Thể tích của một hình cầu có bán kính $R$ được tính bằng công thức nào?",
         "options": ["A. $V = \\frac{4}{3}\pi R^3$", "B. $V = 4\pi R^2$", "C. $V = \\frac{1}{3}\pi R^3$", "D. $V = \pi R^3$"], "ans": "A",
         "exp": "Thể tích hình cầu bằng $\\frac{4}{3}\pi R^3$."
     })
 
-    # --- 8. THỐNG KÊ XÁC SUẤT (6 CÂU CÓ HÌNH BIỂU ĐỒ) ---
-    exam.append({
-        "q": "Biểu đồ quạt tròn dưới đây dùng để làm gì trong môn Thống kê?",
-        "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Pie-chart.jpg/400px-Pie-chart.jpg",
-        "options": ["A. Biểu diễn tỷ lệ phần trăm các thành phần", "B. Biểu diễn sự thay đổi theo thời gian", "C. Biểu diễn tần số tích lũy", "D. Giải phương trình bậc hai"],
-        "ans": "A", "exp": "Biểu đồ quạt tròn (Pie chart) rất trực quan để so sánh tỷ lệ phần trăm giữa các thành phần trong một tổng thể."
-    })
-    for _ in range(4):
-        total = random.randint(20, 50)
-        win = random.randint(2, 10)
-        q = f"Trong một hộp kín có ${total}$ viên bi kích thước giống nhau, trong đó có ${win}$ viên bi xanh. Lấy ngẫu nhiên 1 viên bi. Xác suất lấy được bi xanh là:"
-        opts, ans = make_options(f"\\frac{{{win}}}{{{total}}}", f"\\frac{{{win}}}{{{total-win}}}", f"\\frac{{{total-win}}}{{{total}}}", f"\\frac{{1}}{{{win}}}")
-        exam.append({"q": q, "options": opts, "ans": ans, "exp": f"Xác suất bằng tỷ số giữa số bi xanh và tổng số bi: $\\frac{{{win}}}{{{total}}}$"})
+    # --- 8. THỐNG KÊ XÁC SUẤT (6 CÂU KÈM HÌNH HỘP BÓNG SVG) ---
+    c_list = [("xanh", "đỏ"), ("vàng", "trắng"), ("đỏ", "trắng"), ("xanh", "vàng")]
+    
+    for _ in range(5):
+        color1, color2 = random.choice(c_list)
+        win = random.randint(3, 8)
+        lose = random.randint(4, 10)
+        total = win + lose
+        
+        q = f"Trong một chiếc hộp kín có chứa ${win}$ quả bóng màu {color1} và ${lose}$ quả bóng màu {color2} (kích thước giống hệt nhau). Lấy ngẫu nhiên 1 quả bóng. Xác suất lấy được bóng màu {color1} là:"
+        opts, ans = make_options(f"\\frac{{{win}}}{{{total}}}", f"\\frac{{{win}}}{{{lose}}}", f"\\frac{{{lose}}}{{{total}}}", f"\\frac{{1}}{{{total}}}")
+        
+        exam.append({
+            "q": q, 
+            "svg": svg_box_of_balls(color1, win, color2, lose),
+            "options": opts, "ans": ans, 
+            "exp": f"Xác suất $P = \\frac{{\\text{{Số bóng {color1}}}}}{{\\text{{Tổng số bóng}}}} = \\frac{{{win}}}{{{win} + {lose}}} = \\frac{{{win}}}{{{total}}}$"
+        })
     
     exam.append({
-        "q": "Gieo đồng thời hai con xúc xắc cân đối đồng chất. Xác suất để tổng số chấm xuất hiện trên hai mặt bằng $7$ là:",
-        "options": make_options("\\frac{1}{6}", "\\frac{1}{36}", "\\frac{7}{36}", "\\frac{1}{12}")[0],
-        "ans": make_options("\\frac{1}{6}", "\\frac{1}{36}", "\\frac{7}{36}", "\\frac{1}{12}")[1],
-        "exp": "Không gian mẫu là $36$. Các kết quả thuận lợi: $(1,6), (2,5), (3,4), (4,3), (5,2), (6,1)$ (có 6 trường hợp). Xác suất: $P = \\frac{6}{36} = \\frac{1}{6}$."
+        "q": "Gieo một con xúc xắc cân đối và đồng chất. Xác suất để xuất hiện mặt có số chấm là số nguyên tố bằng:",
+        "options": make_options("\\frac{1}{2}", "\\frac{1}{3}", "\\frac{1}{6}", "\\frac{2}{3}")[0],
+        "ans": make_options("\\frac{1}{2}", "\\frac{1}{3}", "\\frac{1}{6}", "\\frac{2}{3}")[1],
+        "exp": "Số chấm là số nguyên tố thuộc tập $\{2; 3; 5\}$. Có 3 kết quả thuận lợi. Xác suất $P = \\frac{3}{6} = \\frac{1}{2}$."
     })
 
     random.shuffle(exam)
@@ -511,7 +604,7 @@ def generate_algorithmic_practice():
 # 6. HIỂN THỊ TOÁN HỌC & GIAO DIỆN BÀI THI
 # ==========================================
 def render_exam_content(text):
-    st.write(format_math(text))
+    st.markdown(format_math(text), unsafe_allow_html=True)
 
 def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_ans_data=None):
     if is_review and user_ans_data:
@@ -542,7 +635,10 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
             icon = "✅ ĐÚNG" if is_correct else "❌ SAI"
             with st.expander(f"Câu {i+1}: {icon} | Đáp án chuẩn: {q['ans']}"):
                 render_exam_content(q['q'])
-                if 'image' in q and q['image']: st.image(q['image'])
+                # RENDERING SVG NGAY TẠI ĐÂY NẾU CÓ
+                if 'svg' in q and q['svg']:
+                    st.markdown(q['svg'], unsafe_allow_html=True)
+                    
                 formatted_choice = format_math(str(usr_choice)) if usr_choice else 'Không chọn'
                 st.markdown(f"**Bạn đã chọn:** {formatted_choice}")
                 if not is_correct: st.error("Câu trả lời chưa chính xác.")
@@ -597,7 +693,10 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
             for i, q in enumerate(questions):
                 st.markdown(f"**Câu {i+1}:**")
                 render_exam_content(q['q'])
-                if 'image' in q and q['image']: st.image(q['image'])
+                # RENDERING SVG NGAY TẠI ĐÂY NẾU CÓ
+                if 'svg' in q and q['svg']:
+                    st.markdown(q['svg'], unsafe_allow_html=True)
+                    
                 formatted_options = [format_math(q_opt) for q_opt in q['options']]
                 st.session_state.student_answers[i] = st.radio("Chọn đáp án:", formatted_options, index=None, key=f"q_{i}")
                 st.divider()
