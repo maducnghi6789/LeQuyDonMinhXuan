@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME - ULTIMATE ANTI-404) ---
+# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME - 1.5 FLASH ONLY & ANTI-429) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -24,7 +24,6 @@ VN_TZ = timezone(timedelta(hours=7))
 # 1. TIỆN ÍCH BẢO MẬT & XỬ LÝ CHUỖI
 # ==========================================
 def get_conn():
-    """Tối ưu DB connection chống sập App đa luồng"""
     return sqlite3.connect('exam_db.sqlite', check_same_thread=False)
 
 def remove_accents(input_str):
@@ -43,20 +42,16 @@ def gen_smart_username(fullname, existing_usernames):
         counter += 1
 
 def clean_ai_json(json_str):
-    """VÁ LỖI JSON TỐC ĐỘ CAO: Bóc tách mảng cực mạnh"""
     res = json_str.strip()
     start_idx = res.find('[')
     end_idx = res.rfind(']')
-    
     if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
         res = res[start_idx:end_idx+1]
-    
     res = re.sub(r',\s*]', ']', res)
     res = re.sub(r',\s*}', '}', res)
     return res
 
 def format_math(text):
-    """Máy sấy công thức: Sửa lỗi hiển thị LaTeX chuẩn chỉnh"""
     if not isinstance(text, str): return str(text)
     bt = chr(96)
     text = re.sub(bt + r'(.*?)' + bt, r'$\1$', text)
@@ -248,7 +243,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (CHỐNG 404 TUYỆT ĐỐI)
+# 4. MODULE AI KHẢO THÍ (CHỈ DÙNG FLASH + ANTI 429)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -257,69 +252,62 @@ def extract_text_from_pdf(pdf_file):
     doc.close()
     return text
 
-def safe_ai_generate(prompt, api_key):
-    """Trái tim AI: Thuật toán Băng chuyền lướt 404 siêu tốc độ"""
-    if not api_key or not api_key.strip():
+def safe_ai_generate(prompt, api_key_string):
+    """Trái tim AI: Chỉ chạy gemini-1.5-flash, có cơ chế trượt key và chờ 5s chống nghẽn"""
+    if not api_key_string or not api_key_string.strip():
         return "LỖI HỆ THỐNG: Chưa nhập API Key."
         
-    genai.configure(api_key=api_key.strip())
+    # Chuyển chuỗi API Key thành mảng và trộn ngẫu nhiên
+    keys = [k.strip() for k in api_key_string.split(',') if k.strip()]
+    random.shuffle(keys)
     
-    try:
-        # Lấy danh sách thực tế mà API Key này được phép dùng
-        available_models = [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    except Exception as e:
-        return f"LỖI KẾT NỐI API: Không thể lấy danh sách mô hình từ Google. Vui lòng kiểm tra mạng hoặc API Key. ({str(e)})"
-        
-    if not available_models:
-        return "LỖI API KEY: Tài khoản của bạn không có quyền dùng AI."
-        
-    # Xếp hạng ưu tiên: Flash xịn nhất -> Flash đời sau -> Các model Pro cũ
-    preferred_order = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-pro', 'gemini-pro', 'gemini-1.0-pro']
-    sorted_models = []
-    for p in preferred_order:
-        if p in available_models:
-            sorted_models.append(p)
-    for m in available_models:
-        if m not in sorted_models:
-            sorted_models.append(m)
-
+    # ÉP DUY NHẤT 1 MODEL THEO YÊU CẦU
+    model_name = 'gemini-1.5-flash'
     last_err = ""
     
-    # BẮT ĐẦU VÒNG LẶP TRUY QUÉT
-    for model_name in sorted_models:
-        try:
-            model = genai.GenerativeModel(model_name)
-            # Dùng cấu hình an toàn nhất: Nhiệt độ thấp (giải toán chuẩn), Bỏ lệnh ép JSON (chống lỗi not supported)
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(temperature=0.2)
-            )
-            
-            raw_response = response.text.replace('TEX_', '\\')
-            cleaned_text = clean_ai_json(raw_response)
-            
+    # Chạy 2 vòng (2 attempts). Nếu vòng 1 tất cả Key đều 429, sẽ nghỉ 5 giây rồi chạy vòng 2.
+    for attempt in range(2):
+        for current_key in keys:
+            genai.configure(api_key=current_key)
             try:
-                return json.loads(cleaned_text)
-            except json.JSONDecodeError:
-                # JSON bị hỏng -> bỏ qua model này, lướt sang model tiếp theo
-                continue
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(temperature=0.2)
+                )
                 
-        except Exception as e:
-            err_msg = str(e).lower()
-            last_err = err_msg
+                raw_response = response.text.replace('TEX_', '\\')
+                cleaned_text = clean_ai_json(raw_response)
+                
+                try:
+                    return json.loads(cleaned_text)
+                except json.JSONDecodeError:
+                    continue # JSON hỏng thì nhảy Key khác
+                    
+            except Exception as e:
+                err_msg = str(e).lower()
+                last_err = err_msg
+                
+                if "429" in err_msg or "quota" in err_msg:
+                    # Bị 429 -> Bẻ lái sang dùng API KEY TIẾP THEO ngay lập tức
+                    continue 
+                elif "403" in err_msg or "api key" in err_msg or "404" in err_msg:
+                    # Key hỏng hoặc không hỗ trợ -> Bẻ lái sang API KEY TIẾP THEO
+                    continue 
+                else:
+                    continue
+        
+        # Nếu đã thử qua tất cả các Key mà vẫn kẹt ở lỗi 429 -> Chờ 5 giây rồi thử lại vòng 2
+        if "429" in last_err or "quota" in last_err:
+            time.sleep(5)
+        else:
+            break # Lỗi khác thì không cần chờ
             
-            if "404" in err_msg or "not found" in err_msg or "not supported" in err_msg:
-                # TUYỆT CHIÊU: Bị lỗi 404 -> lờ đi và nhảy sang model tiếp theo ngay lập tức
-                continue
-            elif "429" in err_msg or "quota" in err_msg:
-                return "LỖI HẠN NGẠCH (429): Google API đang quá tải. Xin vui lòng chờ 1 phút rồi thử lại."
-            elif "403" in err_msg or "api key" in err_msg:
-                return "LỖI API KEY: Key của bạn không hợp lệ hoặc đã bị khóa."
-            else:
-                # Các lỗi không mong muốn khác -> lướt sang model tiếp theo
-                continue
-                
-    return f"LỖI TỔNG HỢP: Đã thử toàn bộ danh sách {len(sorted_models)} mô hình của Google nhưng đều bị chặn hoặc văng lỗi. (Lỗi cuối: {last_err})"
+    # Nếu xài cạn sạch cả mảng API Key & qua cả 2 vòng chờ mà vẫn xịt
+    if "429" in last_err or "quota" in last_err:
+        return f"LỖI HẠN NGẠCH (429): API Google đang bị nghẽn (Tối đa 15 lần/phút). Bạn hãy nhập thêm nhiều API Key cách nhau bằng dấu phẩy ở phần cài đặt để chia tải nhé!"
+    else:
+        return f"LỖI KẾT NỐI AI: Toàn bộ API Key của bạn không khả dụng. (Lỗi cuối: {last_err})"
 
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Trích xuất 40 câu trắc nghiệm Toán từ văn bản dưới đây.
@@ -521,7 +509,8 @@ def main():
             if role == "core_admin":
                 st.markdown("---")
                 st.subheader("🔑 Cấu hình AI (Gemini)")
-                new_key = st.text_input("Gemini API Key:", value=api_key, type="password")
+                # HƯỚNG DẪN GIÁO VIÊN NHẬP NHIỀU KEY
+                new_key = st.text_input("Gemini API Key (Nhập nhiều Key cách nhau bằng dấu phẩy để cân bằng tải):", value=api_key, type="password")
                 if st.button("💾 Lưu API"):
                     conn = get_conn()
                     conn.execute("INSERT OR REPLACE INTO system_settings VALUES ('GEMINI_API_KEY', ?)", (new_key.strip(),))
@@ -751,7 +740,7 @@ def main():
             conn.close()
             
         elif choice == "🔐 Cá nhân":
-            st.header("🔐 Thông কমপ্লেx Thông tin cá nhân")
+            st.header("🔐 Thông tin cá nhân")
             st.info(f"Xin chào {st.session_state.fullname}! Mọi thông tin của bạn đang được bảo mật an toàn.")
 
 if __name__ == "__main__":
