@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME - BĂNG CHUYỀN MODEL) ---
+# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME - TỐI ƯU TOÀN DIỆN) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -274,7 +274,6 @@ def safe_ai_generate(prompt, api_key):
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt)
             
-            # Khôi phục Token LaTeX
             raw_response = response.text.replace('TEX_', '\\')
             cleaned_text = clean_ai_json(raw_response)
             
@@ -287,19 +286,16 @@ def safe_ai_generate(prompt, api_key):
             err_msg = str(e).lower()
             last_err = err_msg
             
-            # Xử lý theo từng loại lỗi
             if "429" in err_msg or "quota" in err_msg:
                 return "LỖI HẠN NGẠCH (429): Google đang quá tải. Xin vui lòng chờ 1 phút rồi thử lại."
             elif "404" in err_msg:
-                # Tuyệt chiêu: Lỗi 404 thì TỰ ĐỘNG BỎ QUA, lập tức thử model tiếp theo trong băng chuyền
-                continue 
+                continue # Lướt qua lỗi 404, chuyển sang model kế tiếp
             elif "403" in err_msg or "api key" in err_msg:
                 return "LỖI API KEY: Key của bạn không hợp lệ hoặc đã bị khóa."
             else:
                 return f"LỖI HỆ THỐNG AI: {str(e)}"
                 
-    # Nếu lướt qua cả 4 model mà vẫn thất bại
-    return f"LỖI TOÀN TẬP: API Key của bạn không hỗ trợ bất kỳ mô hình nào. (Chi tiết: {last_err})"
+    return f"LỖI TOÀN TẬP: API Key của bạn không hỗ trợ bất kỳ mô hình nào. ({last_err})"
 
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Trích xuất 40 câu trắc nghiệm từ văn bản dưới đây.
@@ -575,7 +571,7 @@ def main():
                     
                     if st.form_submit_button("🚀 BIÊN TẬP & GIAO ĐỀ BẰNG AI"):
                         if e_title and e_file:
-                            with st.spinner("Đang phân tích PDF và biên tập đề, xin đợi..."):
+                            with st.spinner("🤖 Đang phân tích PDF và biên tập đề... Xin chờ."):
                                 raw_txt = extract_text_from_pdf(e_file)
                                 exam_res = parse_exam_with_ai(raw_txt, api_key)
                                 if isinstance(exam_res, list):
@@ -671,9 +667,13 @@ def main():
         elif choice == "✍️ Kiểm tra bắt buộc":
             st.header("✍️ Kiểm tra bắt buộc")
             conn = get_conn()
-            exams = conn.execute("SELECT id, title, questions_json, time_limit FROM mandatory_exams WHERE target_class=? OR target_class='Tất cả các lớp'", (st.session_state.class_name,)).fetchall()
             
-            if not exams: st.info("🎉 Hiện tại bạn chưa có bài kiểm tra nào!")
+            # Khắc phục lỗi bảo mật & khoảng trắng khiến học sinh không thấy đề thi
+            student_class = st.session_state.class_name.strip() if st.session_state.class_name else ""
+            exams = conn.execute("SELECT id, title, questions_json, time_limit FROM mandatory_exams WHERE trim(target_class)=? OR target_class='Tất cả các lớp'", (student_class,)).fetchall()
+            
+            if not exams: 
+                st.info("🎉 Hiện tại bạn chưa có bài kiểm tra nào được giao!")
             else:
                 if st.session_state.get('taking_exam') is None:
                     for e_id, e_title, e_json, e_time in exams:
@@ -706,13 +706,13 @@ def main():
         elif choice == "🚀 Luyện đề tự do":
             st.header("🚀 Luyện đề tự do") 
             if st.session_state.get('taking_free_exam') is None:
-                if st.button("TẠO ĐỀ", type="primary"): 
+                if st.button("🪄 TẠO ĐỀ AI", type="primary"): 
                     if not api_key: st.error("❌ Hệ thống chưa kết nối AI. Vui lòng liên hệ Admin nạp API Key.")
                     else:
                         with st.spinner("Đang tạo đề, xin đợi..."):
                             free_exam = generate_free_practice_ai(api_key)
                             if isinstance(free_exam, list): 
-                                st.session_state.taking_free_exam = {'title': "Luyện đề Tự do", 'time_limit': 90, 'questions': free_exam}
+                                st.session_state.taking_free_exam = {'title': "Luyện đề Tự do (100% AI)", 'time_limit': 90, 'questions': free_exam}
                                 st.rerun()
                             else: 
                                 st.error(f"❌ {free_exam}")
