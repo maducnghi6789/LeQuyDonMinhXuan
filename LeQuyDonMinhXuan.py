@@ -9,13 +9,11 @@ import unicodedata
 import random
 import re
 from io import BytesIO
-import matplotlib.pyplot as plt
-import numpy as np
-from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
+from datetime import datetime, timedelta, timezone
 
-# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME - TỐI ƯU TOÀN DIỆN) ---
+# --- CẤU HÌNH HỆ THỐNG V30 (BẢN A1 SUPREME - TINH HOA TÍCH HỢP) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -140,8 +138,10 @@ def account_manager_ui(target_role, specific_class=None):
         if 'school' in df.columns: cols.append('school')
         if 'managed_classes' in df.columns and target_role == 'sub_admin': cols.append('managed_classes')
         
+        # HIỂN THỊ MẬT KHẨU RÕ RÀNG (Không mã hóa)
         st.dataframe(df[cols], use_container_width=True)
         
+        # TÍNH NĂNG: XUẤT EXCEL
         out = BytesIO()
         with pd.ExcelWriter(out, engine='openpyxl') as w:
             rename_cols = {'username': 'Tài khoản', 'fullname': 'Họ và tên', 'password': 'Mật khẩu', 'class_name': 'Lớp'}
@@ -248,7 +248,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI KHẢO THÍ (BĂNG CHUYỀN MODEL SIÊU TỐC)
+# 4. MODULE AI KHẢO THÍ (TÍCH HỢP TINH HOA FASTAPI)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -258,52 +258,54 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key):
-    """Trái tim AI: Băng chuyền Model lướt qua lỗi 404, tối ưu tốc độ và Free API"""
+    """Trái tim AI: Áp dụng Configuration chuyên biệt giải Toán và bảo vệ API Key"""
     if not api_key or not api_key.strip():
-        return "LỖI HỆ THỐNG: Chưa nhập API Key."
+        return "LỖI: Chưa nhập API Key."
         
     genai.configure(api_key=api_key.strip())
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
-    # DANH SÁCH BĂNG CHUYỀN: Từ model mới nhất đến model quốc dân cũ nhất.
-    # Bị 404 ở model nào, nó tự lướt xuống model tiếp theo chỉ trong 0.1s.
-    model_names = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-1.0-pro', 'gemini-pro']
-    
-    last_err = ""
-    for model_name in model_names:
+    for attempt in range(2):
         try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt)
+            # TINH HOA CẤU HÌNH TỪ BẢN CHUYÊN GIA (Temperature = 0.2, Native JSON)
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.2, 
+                    response_mime_type="application/json"
+                )
+            )
             
             raw_response = response.text.replace('TEX_', '\\')
-            cleaned_text = clean_ai_json(raw_response)
             
             try:
-                return json.loads(cleaned_text)
+                return json.loads(raw_response)
             except json.JSONDecodeError:
-                return "LỖI AI: Định dạng JSON trả về bị hỏng. Bạn hãy bấm tạo lại đề."
-                
+                cleaned_text = clean_ai_json(raw_response)
+                try:
+                    return json.loads(cleaned_text)
+                except:
+                    if attempt == 1: return "LỖI AI: Định dạng JSON trả về bị hỏng. Bạn hãy thử tạo lại đề."
+                    time.sleep(1)
+                    continue
+                    
         except Exception as e:
             err_msg = str(e).lower()
-            last_err = err_msg
-            
             if "429" in err_msg or "quota" in err_msg:
-                return "LỖI HẠN NGẠCH (429): Google đang quá tải. Xin vui lòng chờ 1 phút rồi thử lại."
-            elif "404" in err_msg:
-                continue # Lướt qua lỗi 404, chuyển sang model kế tiếp
-            elif "403" in err_msg or "api key" in err_msg:
-                return "LỖI API KEY: Key của bạn không hợp lệ hoặc đã bị khóa."
+                return "LỖI HẠN NGẠCH (429): Quá tải yêu cầu API Miễn phí. Hãy chờ 1 phút rồi thử lại."
+            elif "400" in err_msg or "403" in err_msg or "api key" in err_msg:
+                return "LỖI API KEY: Key của bạn không hợp lệ hoặc đã bị khóa. Vui lòng kiểm tra lại."
             else:
-                return f"LỖI HỆ THỐNG AI: {str(e)}"
-                
-    return f"LỖI TOÀN TẬP: API Key của bạn không hỗ trợ bất kỳ mô hình nào. ({last_err})"
+                if attempt == 1: return f"LỖI HỆ THỐNG AI: {str(e)}"
+                time.sleep(1)
+                continue
 
 def parse_exam_with_ai(raw_text, api_key):
-    prompt = f"""Trích xuất 40 câu trắc nghiệm từ văn bản dưới đây.
-    YÊU CẦU ĐỊNH DẠNG: Chỉ trả về JSON Array: [{{"q": "...", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "..."}}]
+    prompt = f"""Trích xuất 40 câu trắc nghiệm Toán từ văn bản dưới đây.
+    YÊU CẦU ĐỊNH DẠNG: Trả về mảng JSON Array: [{{"q": "...", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "..."}}]
     LƯU Ý BẮT BUỘC: 
     1. Thay toàn bộ dấu gạch chéo ngược (\) bằng chữ 'TEX_'. (VD: TEX_sqrt)
     2. Dùng nháy đơn (') bên trong chuỗi, KHÔNG dùng nháy kép (").
-    3. KHÔNG có văn bản nào ngoài JSON.
     VĂN BẢN:
     {raw_text}
     """
@@ -317,13 +319,12 @@ def generate_free_practice_ai(api_key):
     - Rải đều mức độ Nhận biết, Thông hiểu, Vận dụng. BẮT BUỘC có 2 câu Vận dụng cao (Cực khó).
     
     YÊU CẦU ĐỊNH DẠNG:
-    Chỉ trả về JSON Array: [{"q": "...", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "Giải..."}]
+    Trả về mảng JSON Array: [{"q": "...", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "Giải..."}]
     
     LƯU Ý BẮT BUỘC ĐỂ KHÔNG BỊ LỖI:
     1. Dùng nháy đơn (') bên trong nội dung, TUYỆT ĐỐI KHÔNG dùng nháy kép (").
     2. Thay toàn bộ dấu gạch chéo ngược (\) của Toán học bằng chữ 'TEX_'. (VD: TEX_sqrt, TEX_frac).
     3. Bọc biểu thức Toán trong dấu $. (VD: $TEX_sqrt{2}$).
-    4. CHỈ XUẤT JSON.
     """
     ai_res = safe_ai_generate(prompt, api_key)
     
@@ -336,7 +337,6 @@ def generate_free_practice_ai(api_key):
 # 5. TIỆN ÍCH HIỂN THỊ CÔNG THỨC TOÁN
 # ==========================================
 def render_exam_content(text):
-    """Hỗ trợ render hiển thị nội dung chứa LaTeX lên giao diện UI"""
     st.write(format_math(text))
 
 # ==========================================
@@ -667,8 +667,6 @@ def main():
         elif choice == "✍️ Kiểm tra bắt buộc":
             st.header("✍️ Kiểm tra bắt buộc")
             conn = get_conn()
-            
-            # Khắc phục lỗi bảo mật & khoảng trắng khiến học sinh không thấy đề thi
             student_class = st.session_state.class_name.strip() if st.session_state.class_name else ""
             exams = conn.execute("SELECT id, title, questions_json, time_limit FROM mandatory_exams WHERE trim(target_class)=? OR target_class='Tất cả các lớp'", (student_class,)).fetchall()
             
@@ -706,7 +704,7 @@ def main():
         elif choice == "🚀 Luyện đề tự do":
             st.header("🚀 Luyện đề tự do") 
             if st.session_state.get('taking_free_exam') is None:
-                if st.button("🪄 TẠO ĐỀ AI", type="primary"): 
+                if st.button("TẠO ĐỀ", type="primary"): 
                     if not api_key: st.error("❌ Hệ thống chưa kết nối AI. Vui lòng liên hệ Admin nạp API Key.")
                     else:
                         with st.spinner("Đang tạo đề, xin đợi..."):
