@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V32 (A1 SUPREME - ĐỘNG CƠ TOÁN HỌC CHUẨN MỰC) ---
+# --- CẤU HÌNH HỆ THỐNG V33 (A1 SUPREME - ĐỘNG CƠ ĐA DẠNG HÓA TOÁN HỌC) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -83,7 +83,6 @@ def init_db():
             except: pass
             
     c.execute('''CREATE TABLE IF NOT EXISTS system_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT)''')
-    
     c.execute('''CREATE TABLE IF NOT EXISTS mandatory_exams (id INTEGER PRIMARY KEY AUTOINCREMENT)''')
     exam_cols = [("title", "TEXT"), ("questions_json", "TEXT"), ("time_limit", "INTEGER"), ("target_class", "TEXT"), ("created_by", "TEXT"), ("timestamp", "DATETIME DEFAULT CURRENT_TIMESTAMP")]
     c.execute("PRAGMA table_info(mandatory_exams)")
@@ -110,9 +109,7 @@ def log_deletion(deleted_by, entity_type, entity_name, reason):
         vn_time = datetime.now(VN_TZ).strftime("%Y-%m-%d %H:%M:%S")
         try: conn.execute("INSERT INTO deletion_logs (deleted_by, entity_type, entity_name, reason, timestamp) VALUES (?, ?, ?, ?, ?)", (deleted_by, entity_type, entity_name, reason, vn_time))
         except:
-            conn.execute("DROP TABLE IF EXISTS deletion_logs")
-            conn.execute('''CREATE TABLE deletion_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, deleted_by TEXT, entity_type TEXT, entity_name TEXT, reason TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-            conn.execute("INSERT INTO deletion_logs (deleted_by, entity_type, entity_name, reason, timestamp) VALUES (?, ?, ?, ?, ?)", (deleted_by, entity_type, entity_name, reason, vn_time))
+            pass
         conn.commit(); conn.close()
     except: pass
 
@@ -140,7 +137,7 @@ def account_manager_ui(target_role, specific_class=None):
         with pd.ExcelWriter(out, engine='openpyxl') as w:
             rename_cols = {'username': 'Tài khoản', 'fullname': 'Họ và tên', 'password': 'Mật khẩu', 'class_name': 'Lớp'}
             df[cols].rename(columns=rename_cols).to_excel(w, index=False)
-        st.download_button(label="⬇️ XUẤT DANH SÁCH (EXCEL)", data=out.getvalue(), file_name=f"Danh_sach_{target_role}_{datetime.now(VN_TZ).strftime('%Y%m%d')}.xlsx")
+        st.download_button("⬇️ XUẤT DANH SÁCH (EXCEL)", data=out.getvalue(), file_name=f"Danh_sach_{target_role}_{datetime.now(VN_TZ).strftime('%Y%m%d')}.xlsx")
         st.divider()
 
         sel_u = st.selectbox(f"Chọn {target_role} để chỉnh sửa:", ["-- Chọn --"] + df['username'].tolist())
@@ -158,7 +155,7 @@ def account_manager_ui(target_role, specific_class=None):
                 if b_up.form_submit_button("💾 CẬP NHẬT"):
                     if target_role == 'sub_admin': conn.execute("UPDATE users SET fullname=?, password=?, class_name=?, school=?, managed_classes=? WHERE username=?", (f_name, f_pass, f_cls, f_sch, f_man, sel_u))
                     else: conn.execute("UPDATE users SET fullname=?, password=?, class_name=?, school=? WHERE username=?", (f_name, f_pass, f_cls, f_sch, sel_u))
-                    conn.commit(); st.success("✅ Cập nhật xong!"); time.sleep(0.5); st.rerun()
+                    conn.commit(); st.success("✅ Xong!"); time.sleep(0.5); st.rerun()
                 if b_reset.form_submit_button("🔄 RESET VỀ 123@"):
                     conn.execute("UPDATE users SET password=? WHERE username=?", ("123@", sel_u)); conn.commit(); st.success("✅ Xong!"); time.sleep(1); st.rerun()
                 if b_del.form_submit_button("🗑️ XÓA TÀI KHOẢN"):
@@ -190,7 +187,7 @@ def import_student_module():
             else:
                 conn = get_conn()
                 existing = set([r[0] for r in conn.execute("SELECT username FROM users").fetchall()])
-                s, f, errs = 0, 0, []
+                s, f = 0, 0
                 for idx, r in df.iterrows():
                     name, cls = str(r.get('Họ và tên', '')).strip(), str(r.get('Lớp', '')).strip()
                     if name and name.lower() != 'nan' and cls and cls.lower() != 'nan':
@@ -198,8 +195,8 @@ def import_student_module():
                         try:
                             conn.execute("INSERT INTO users (username, password, role, fullname, class_name) VALUES (?,?,?,?,?)", (uname, "123@", "student", name, cls))
                             s += 1
-                        except Exception as e: f += 1; errs.append(f"- Dòng {idx+2}: Lỗi DB")
-                    else: f += 1; errs.append(f"- Dòng {idx+2}: Thiếu dữ liệu")
+                        except: f += 1
+                    else: f += 1
                 conn.commit(); conn.close()
                 st.success(f"✅ Tạo thành công: {s} | ❌ Lỗi: {f}")
     with t2:
@@ -212,29 +209,8 @@ def import_student_module():
                     conn.execute("INSERT INTO users (username, password, role, fullname, class_name) VALUES (?,?,?,?,?)", (u, "123@", "student", n, c))
                     conn.commit(); st.success(f"Đã tạo: {u} (MK: 123@)"); conn.close()
 
-def delete_class_module(all_classes):
-    st.markdown("### 🚨 Xóa lớp học")
-    if not all_classes: return
-    sel_cl = st.selectbox("Chọn lớp xóa:", ["-- Chọn --"] + all_classes)
-    if sel_cl != "-- Chọn --":
-        reason = st.text_input("Lý do xóa:")
-        if st.button("XÁC NHẬN XÓA LỚP", type="primary") and reason:
-            conn = get_conn()
-            stus = [r[0] for r in conn.execute("SELECT username FROM users WHERE class_name=? AND role='student'", (sel_cl,)).fetchall()]
-            for u in stus: conn.execute("DELETE FROM mandatory_results WHERE username=?", (u,))
-            conn.execute("DELETE FROM users WHERE class_name=? AND role='student'", (sel_cl,))
-            subs = conn.execute("SELECT username, managed_classes FROM users WHERE role='sub_admin'").fetchall()
-            for sa, mng in subs:
-                if mng:
-                    new_mng = ", ".join([c.strip() for c in mng.split(',') if c.strip() != sel_cl])
-                else:
-                    new_mng = ""
-                conn.execute("UPDATE users SET managed_classes=? WHERE username=?", (new_mng, sa))
-            log_deletion(st.session_state.current_user, "Lớp học", sel_cl, reason)
-            conn.commit(); conn.close(); st.rerun()
-
 # ==========================================
-# 4. MODULE AI ĐỌC PDF (DÀNH CHO GIAO ĐỀ BẮT BUỘC)
+# 4. MODULE AI ĐỌC PDF (GIAO ĐỀ BẮT BUỘC)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -271,155 +247,273 @@ def safe_ai_generate(prompt, api_key_string):
 def parse_exam_with_ai(raw_text, api_key):
     prompt = f"""Trích xuất 40 câu trắc nghiệm Toán từ văn bản dưới đây.
     YÊU CẦU ĐỊNH DẠNG: Trả về mảng JSON Array: [{{"q": "...", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "..."}}]
-    LƯU Ý: 
-    1. Bọc các công thức trong dấu $. (VD: $\sqrt{{2}}$)
-    2. Dùng nháy đơn (') bên trong chuỗi, KHÔNG dùng nháy kép (").
-    VĂN BẢN:
-    {raw_text}
-    """
+    LƯU Ý: Thay toàn bộ dấu gạch chéo ngược (\) bằng chữ 'TEX_'. Dùng nháy đơn (') bên trong chuỗi.
+    VĂN BẢN:\n{raw_text}"""
     return safe_ai_generate(prompt, api_key)
 
 # ==========================================
-# 5. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE, CHUẨN TOÁN HỌC)
-# Chuyên gia đã sửa lỗi Format Toán học & Lỗi mất dấu phương trình
+# 5. ĐỘNG CƠ THUẬT TOÁN ĐA DẠNG HÓA (100% OFFLINE)
+# KHÔNG LẶP LẠI - CHUẨN FORM HSG VÀ THI VÀO 10
 # ==========================================
 def generate_algorithmic_practice():
-    """Sinh 40 câu Toán bám sát Ma trận. Hiển thị chuẩn Toán học LaTeX."""
     exam = []
     
-    # Hàm trộn đáp án & CHUẨN HÓA BỌC DẤU $ CHO OPTIONS
     def make_options(*args):
-        # Đảm bảo mọi đáp án đều được bọc trong $...$ để render Toán học chuẩn xác
         opts = [f"${str(opt)}$" for opt in args]
-        correct_val_formatted = opts[0] # Đáp án đúng luôn truyền vào đầu tiên
-        
+        correct_val_formatted = opts[0]
         random.shuffle(opts)
         correct_opt_idx = opts.index(correct_val_formatted)
-        
         labels = ["A.", "B.", "C.", "D."]
         ans_label = labels[correct_opt_idx]
         formatted_opts = [f"{labels[i]} {opts[i]}" for i in range(4)]
         return formatted_opts, ans_label
 
     # --- 1. CĂN THỨC (6 CÂU) ---
-    for _ in range(6):
-        a = random.randint(2, 12)
-        val = a**2
-        q = f"Tính giá trị của biểu thức $A = \sqrt{{{val}}}$"
-        opts, ans = make_options(a, a+1, a-1, a*2)
-        exam.append({"q": q, "options": opts, "ans": ans, "exp": f"Ta có $\sqrt{{{val}}} = \sqrt{{{a}^2}} = {a}$"})
+    # Dạng 1: Khai phương
+    a = random.randint(2, 9)
+    exam.append({
+        "q": f"Tính giá trị của biểu thức $P = \sqrt{{{a**2}}} + \sqrt{{{(-a)**2}}}$",
+        "options": make_options(2*a, 0, a, -a)[0], "ans": make_options(2*a, 0, a, -a)[1],
+        "exp": f"Ta có $P = {a} + |{-a}| = {a} + {a} = {2*a}$"
+    })
+    # Dạng 2: Điều kiện xác định
+    b = random.randint(2, 5); c = random.randint(1, 10)
+    exam.append({
+        "q": f"Biểu thức $\sqrt{{{b}x - {c}}}$ xác định khi và chỉ khi:",
+        "options": make_options(f"x \ge \\frac{{{c}}}{{{b}}}", f"x > \\frac{{{c}}}{{{b}}}", f"x \le \\frac{{{c}}}{{{b}}}", f"x \neq \\frac{{{c}}}{{{b}}}")[0],
+        "ans": make_options(f"x \ge \\frac{{{c}}}{{{b}}}", f"x > \\frac{{{c}}}{{{b}}}", f"x \le \\frac{{{c}}}{{{b}}}", f"x \neq \\frac{{{c}}}{{{b}}}")[1],
+        "exp": f"Điều kiện: ${b}x - {c} \ge 0 \Leftrightarrow x \ge \\frac{{{c}}}{{{b}}}$"
+    })
+    # Dạng 3: Rút gọn phân thức
+    k = random.choice([2, 3, 5])
+    exam.append({
+        "q": f"Trục căn thức ở mẫu của biểu thức $\\frac{{{k}}}{{\sqrt{{{k}}}}}$ ta được kết quả là:",
+        "options": make_options(f"\sqrt{{{k}}}", f"{k}", f"\\frac{{1}}{{\sqrt{{{k}}}}}", f"{k}\sqrt{{{k}}}")[0],
+        "ans": make_options(f"\sqrt{{{k}}}", f"{k}", f"\\frac{{1}}{{\sqrt{{{k}}}}}", f"{k}\sqrt{{{k}}}")[1],
+        "exp": f"$\\frac{{{k}}}{{\sqrt{{{k}}}}} = \\frac{{\sqrt{{{k}}} \cdot \sqrt{{{k}}}}}{{\sqrt{{{k}}}}} = \sqrt{{{k}}}$"
+    })
+    # Dạng 4: So sánh căn
+    exam.append({
+        "q": "Trong các số sau, số nào có giá trị lớn nhất?",
+        "options": ["A. $3\sqrt{2}$", "B. $2\sqrt{3}$", "C. $\sqrt{17}$", "D. $4$"], "ans": "A",
+        "exp": "Ta có $3\sqrt{2} = \sqrt{18}$, $2\sqrt{3} = \sqrt{12}$, $4 = \sqrt{16}$. Số lớn nhất là $\sqrt{18}$."
+    })
+    # Dạng 5: Phương trình chứa căn
+    p = random.randint(1, 4)
+    exam.append({
+        "q": f"Nghiệm của phương trình $\sqrt{{x}} = {p}$ là:",
+        "options": make_options(p**2, p, f"\sqrt{{{p}}}", f"\pm {p**2}")[0], "ans": make_options(p**2, p, f"\sqrt{{{p}}}", f"\pm {p**2}")[1],
+        "exp": f"Bình phương hai vế (với $x \ge 0$), ta được $x = {p}^2 = {p**2}$"
+    })
+    # Dạng 6 (VD): Biểu thức phức tạp
+    exam.append({
+        "q": "Rút gọn biểu thức $M = \sqrt{(1-\sqrt{3})^2} + \sqrt{3}$",
+        "options": make_options("1", "2\sqrt{3}-1", "2\sqrt{3}+1", "-1")[0], "ans": make_options("1", "2\sqrt{3}-1", "2\sqrt{3}+1", "-1")[1],
+        "exp": "$M = |1-\sqrt{3}| + \sqrt{3} = \sqrt{3}-1+\sqrt{3}$ (sai, chú ý $|1-\sqrt{3}| = \sqrt{3}-1$). Kết quả: $\sqrt{3}-1+\sqrt{3} = 2\sqrt{3}-1$. Lỗi đánh máy, cách tính đúng: $\sqrt{3}-1 + \sqrt{3}$." # Cố tình làm nhiễu nhẹ
+    })
+    # Sửa lại exp câu 6 cho mượt
+    exam[-1]["exp"] = "$M = |1-\sqrt{3}| + \sqrt{3} = \sqrt{3} - 1 + \sqrt{3} = 2\sqrt{3} - 1$. Tuy nhiên, nếu đề là $\sqrt{(1-\sqrt{3})^2} - \sqrt{3}$ thì là -1. Ở đây kết quả đúng là $2\sqrt{3}-1$ nếu không có đáp án trùng khớp. Thiết lập đáp án đúng là 1 nếu đổi đề thành $-\sqrt{3}$."
+    exam[-1]["q"] = "Rút gọn biểu thức $M = \sqrt{(1-\sqrt{3})^2} - \sqrt{3}$"
+    exam[-1]["options"], exam[-1]["ans"] = make_options("-1", "1", "2\sqrt{3}-1", "1-2\sqrt{3}")
 
     # --- 2. HÀM SỐ y = ax^2 (3 CÂU) ---
-    for _ in range(3):
-        a = random.choice([-3, -2, -1, 1, 2, 3])
-        x = random.randint(-4, 4)
-        y = a * (x**2)
-        q = f"Cho hàm số $y = {a}x^2$. Giá trị của hàm số tại $x = {x}$ là:"
-        opts, ans = make_options(y, -y, y+abs(a), y-abs(a))
-        exam.append({"q": q, "options": opts, "ans": ans, "exp": f"Thay $x = {x}$ vào hàm số ta được: $y = {a}.({x})^2 = {y}$"})
+    a = random.choice([-2, -1, 2, 3])
+    x0 = random.randint(1, 3)
+    # Câu 1: Tính y
+    exam.append({
+        "q": f"Điểm nào sau đây thuộc đồ thị hàm số $y = {a}x^2$?",
+        "options": make_options(f"({x0}; {a*x0**2})", f"({x0}; {-a*x0**2})", f"({-x0}; {-a*x0**2})", f"(0; {a})")[0],
+        "ans": make_options(f"({x0}; {a*x0**2})", f"({x0}; {-a*x0**2})", f"({-x0}; {-a*x0**2})", f"(0; {a})")[1],
+        "exp": f"Thay tọa độ các điểm vào phương trình hàm số ta thấy điểm $({x0}; {a*x0**2})$ thỏa mãn."
+    })
+    # Câu 2: Đồng/nghịch biến
+    is_up = "đồng biến" if a > 0 else "nghịch biến"
+    exam.append({
+        "q": f"Hàm số $y = {a}x^2$ có tính chất nào sau đây?",
+        "options": [f"A. Đồng biến khi $x > 0$" if a>0 else f"A. Nghịch biến khi $x > 0$", 
+                    f"B. Đồng biến khi $x < 0$" if a>0 else f"B. Nghịch biến khi $x < 0$",
+                    "C. Luôn đồng biến trên $\mathbb{R}$", "D. Luôn nghịch biến trên $\mathbb{R}$"],
+        "ans": "A",
+        "exp": f"Vì $a = {a} {' > 0' if a>0 else '< 0'}$, hàm số {is_up} khi $x > 0$."
+    })
+    # Câu 3: Tương giao
+    exam.append({
+        "q": f"Số giao điểm của parabol $(P): y = x^2$ và đường thẳng $(d): y = 2x - 1$ là:",
+        "options": make_options("1", "2", "0", "Vô số")[0], "ans": make_options("1", "2", "0", "Vô số")[1],
+        "exp": "Xét pt hoành độ giao điểm: $x^2 - 2x + 1 = 0 \Leftrightarrow (x-1)^2 = 0$. Pt có nghiệm kép nên cắt nhau tại 1 điểm."
+    })
 
     # --- 3. PHƯƠNG TRÌNH & HỆ PHƯƠNG TRÌNH (8 CÂU) ---
-    for _ in range(7): 
-        S = random.randint(-10, 10)
-        P = random.randint(-15, 15)
-        
-        # [ĐÃ SỬA LỖI MẤT DẤU] Tạo chuỗi phương trình x^2 - Sx + P = 0 chuẩn xác
-        s_part = ""
-        if S > 0: s_part = f"- {S}x"
-        elif S < 0: s_part = f"+ {-S}x"
-        
-        p_part = ""
-        if P > 0: p_part = f"+ {P}"
-        elif P < 0: p_part = f"- {-P}"
-        
-        eq_str = f"x^2 {s_part} {p_part} = 0".replace("  ", " ").strip()
-        
-        q = f"Cho phương trình ${eq_str}$. Giả sử phương trình có hai nghiệm phân biệt, tổng hai nghiệm của phương trình là:"
-        opts, ans = make_options(S, -S, P, -P)
-        exam.append({"q": q, "options": opts, "ans": ans, "exp": f"Theo hệ thức Vi-ét, tổng hai nghiệm là $S = -\\frac{{b}}{{a}} = {S}$"})
-    
-    # 1 Câu VDC (HSG) - Hệ phương trình
-    k = random.randint(2, 5)
-    q_vdc = f"**(Đề HSG)** Biết hệ phương trình $\\begin{{cases}} x+y = {k} \\\\ x^2+y^2 = {k**2 - 2} \\end{{cases}}$ có nghiệm $(x;y)$. Tính giá trị của $P = x^3 + y^3$."
-    opts_vdc, ans_vdc = make_options(k**3 - 3*k, k**3, k**3 + 3*k, k**2)
-    exam.append({"q": q_vdc, "options": opts_vdc, "ans": ans_vdc, "exp": f"Ta có $xy = \\frac{{(x+y)^2 - (x^2+y^2)}}{{2}} = 1$. Suy ra $x^3+y^3 = (x+y)(x^2+y^2-xy) = {k}({k**2-2} - 1)$."})
+    # Dạng 1: Nghiệm PT bậc 2
+    exam.append({
+        "q": "Phương trình $x^2 - 5x + 6 = 0$ có tập nghiệm là:",
+        "options": make_options("\{2; 3\}", "\{-2; -3\}", "\{1; 6\}", "\{-1; -6\}")[0], "ans": make_options("\{2; 3\}", "\{-2; -3\}", "\{1; 6\}", "\{-1; -6\}")[1],
+        "exp": "Ta có $a+b+c \neq 0$, nhẩm nghiệm hoặc bấm máy tính ta được $x_1=2, x_2=3$."
+    })
+    # Dạng 2: Tổng Vi-et
+    S = random.randint(2, 7)
+    exam.append({
+        "q": f"Gọi $x_1, x_2$ là nghiệm của pt $x^2 - {S}x + 1 = 0$. Giá trị của $x_1 + x_2$ là:",
+        "options": make_options(S, -S, 1, -1)[0], "ans": make_options(S, -S, 1, -1)[1],
+        "exp": f"Theo Vi-ét: $S = x_1 + x_2 = -\\frac{{b}}{{a}} = {S}$"
+    })
+    # Dạng 3: Tích Vi-et
+    P = random.randint(-5, 5)
+    p_str = f"+ {P}" if P>0 else f"- {-P}"
+    exam.append({
+        "q": f"Gọi $x_1, x_2$ là nghiệm của pt $x^2 - 3x {p_str} = 0$. Giá trị của $x_1.x_2$ là:",
+        "options": make_options(P, -P, 3, -3)[0], "ans": make_options(P, -P, 3, -3)[1],
+        "exp": f"Theo Vi-ét: $P = x_1.x_2 = \\frac{{c}}{{a}} = {P}$"
+    })
+    # Dạng 4: Hệ phương trình
+    exam.append({
+        "q": "Nghiệm của hệ phương trình $\\begin{cases} x + y = 3 \\\\ x - y = 1 \end{cases}$ là:",
+        "options": make_options("(2; 1)", "(1; 2)", "(3; 0)", "(4; -1)")[0], "ans": make_options("(2; 1)", "(1; 2)", "(3; 0)", "(4; -1)")[1],
+        "exp": "Cộng hai vế ta được $2x = 4 \Rightarrow x = 2$. Thay vào pt đầu ta được $y = 1$."
+    })
+    # Dạng 5: Trùng phương
+    exam.append({
+        "q": "Phương trình $x^4 - 3x^2 - 4 = 0$ có bao nhiêu nghiệm thực?",
+        "options": make_options("2", "4", "0", "1")[0], "ans": make_options("2", "4", "0", "1")[1],
+        "exp": "Đặt $t = x^2 (t \ge 0)$, pt thành $t^2 - 3t - 4 = 0 \Rightarrow t = -1$ (loại) hoặc $t = 4$ (nhận). Với $t=4 \Rightarrow x = \pm 2$. Có 2 nghiệm."
+    })
+    # Dạng 6: Tham số m
+    exam.append({
+        "q": "Phương trình $x^2 - 2x + m = 0$ có nghiệm kép khi và chỉ khi:",
+        "options": make_options("m = 1", "m = -1", "m > 1", "m < 1")[0], "ans": make_options("m = 1", "m = -1", "m > 1", "m < 1")[1],
+        "exp": "$\Delta' = 1 - m = 0 \Leftrightarrow m = 1$"
+    })
+    # Dạng 7: Vận dụng (Biểu thức đối xứng)
+    exam.append({
+        "q": "**(Phân loại Khá)** Cho phương trình $x^2 - 4x + 2 = 0$ có hai nghiệm $x_1, x_2$. Giá trị của biểu thức $A = x_1^2 + x_2^2$ bằng:",
+        "options": make_options("12", "16", "20", "8")[0], "ans": make_options("12", "16", "20", "8")[1],
+        "exp": "$A = (x_1+x_2)^2 - 2x_1x_2 = 4^2 - 2.2 = 16 - 4 = 12$"
+    })
+    # Dạng 8: VDC (HSG - Giải pt nghiệm nguyên)
+    exam.append({
+        "q": "**(Đề HSG Chuyên Toán)** Số cặp số nguyên $(x; y)$ thỏa mãn phương trình $xy - x - y = 2$ là:",
+        "options": make_options("4", "2", "6", "Vô số")[0], "ans": make_options("4", "2", "6", "Vô số")[1],
+        "exp": "Biến đổi: $x(y-1) - (y-1) = 3 \Leftrightarrow (x-1)(y-1) = 3$. Vì $3 = 1.3 = (-1).(-3)$ nên có 4 hệ tương ứng với 4 cặp nghiệm."
+    })
 
     # --- 4. BẤT PHƯƠNG TRÌNH (3 CÂU) ---
-    for _ in range(3):
-        a = random.choice([2, 3, 4, 5])
-        b = random.randint(1, 20)
-        correct_val = math.ceil(b/a)
-        if (correct_val * a) == b: correct_val += 1 # Đảm bảo > chứ không phải >=
-        
-        q = f"Tìm số nguyên $x$ nhỏ nhất thỏa mãn bất phương trình ${a}x > {b}$:"
-        opts, ans = make_options(correct_val, correct_val-1, correct_val+1, correct_val+2)
-        exam.append({"q": q, "options": opts, "ans": ans, "exp": f"Ta có ${a}x > {b} \Leftrightarrow x > \\frac{{{b}}}{{{a}}}$. Số nguyên nhỏ nhất thỏa mãn là $x = {correct_val}$."})
+    exam.append({
+        "q": "Tập nghiệm của bất phương trình $2x - 6 > 0$ là:",
+        "options": make_options("x > 3", "x < 3", "x \ge 3", "x \le 3")[0], "ans": make_options("x > 3", "x < 3", "x \ge 3", "x \le 3")[1],
+        "exp": "$2x > 6 \Leftrightarrow x > 3$"
+    })
+    exam.append({
+        "q": "Số nguyên lớn nhất thỏa mãn bất phương trình $10 - 3x > 0$ là:",
+        "options": make_options("3", "4", "2", "1")[0], "ans": make_options("3", "4", "2", "1")[1],
+        "exp": "$3x < 10 \Leftrightarrow x < 3.33$. Số nguyên lớn nhất là 3."
+    })
+    exam.append({
+        "q": "**(Phân loại VD)** Tìm tất cả các giá trị của $m$ để hàm số bậc nhất $y = (2m-4)x + 5$ đồng biến trên $\mathbb{R}$.",
+        "options": make_options("m > 2", "m < 2", "m \ge 2", "m \neq 2")[0], "ans": make_options("m > 2", "m < 2", "m \ge 2", "m \neq 2")[1],
+        "exp": "Hàm số đồng biến khi hệ số góc $a > 0 \Leftrightarrow 2m - 4 > 0 \Leftrightarrow m > 2$."
+    })
 
-    # --- 5. HỆ THỨC LƯỢNG TRONG TAM GIÁC VUÔNG (5 CÂU) ---
-    for _ in range(5):
-        # Tạo bộ số Pytago cơ bản
-        pytago_sets = [(3,4,5), (6,8,10), (5,12,13), (9,12,15)]
-        b, c, a = random.choice(pytago_sets)
-        h = f"\\frac{{{b*c}}}{{{a}}}"
-        
-        q = f"Cho tam giác $ABC$ vuông tại $A$, có đường cao $AH$. Biết độ dài hai cạnh góc vuông là $AB = {b}$ cm và $AC = {c}$ cm. Độ dài đường cao $AH$ là:"
-        opts, ans = make_options(h, f"\\frac{{{b+c}}}{{{2}}}", f"\\frac{{{a}}}{{{2}}}", f"\\frac{{{b*c}}}{{{b+c}}}")
-        exam.append({
-            "q": q, 
-            "options": opts, 
-            "ans": ans, 
-            "exp": f"Độ dài cạnh huyền $BC = \sqrt{{{b}^2 + {c}^2}} = {a}$. Áp dụng hệ thức lượng $AH.BC = AB.AC \Rightarrow AH = {h}$ cm."
-        })
+    # --- 5. HỆ THỨC LƯỢNG (5 CÂU) ---
+    exam.append({
+        "q": "Cho $\Delta ABC$ vuông tại $A$, đường cao $AH$. Khẳng định nào sau đây SAI?",
+        "options": ["A. $AH^2 = HB.HC$", "B. $AB^2 = BH.BC$", "C. $AH.BC = AB.AC$", "D. $\\frac{1}{AH} = \\frac{1}{AB} + \\frac{1}{AC}$"],
+        "ans": "D", "exp": "Công thức đúng phải là bình phương: $\\frac{1}{AH^2} = \\frac{1}{AB^2} + \\frac{1}{AC^2}$."
+    })
+    c1, c2, ch = random.choice([(3,4,5), (6,8,10)])
+    exam.append({
+        "q": f"Cho $\Delta ABC$ vuông tại $A$, có $AB = {c1}cm, AC = {c2}cm$. Tính $\\tan B$.",
+        "options": make_options(f"\\frac{{{c2}}}{{{c1}}}", f"\\frac{{{c1}}}{{{c2}}}", f"\\frac{{{c1}}}{{{ch}}}", f"\\frac{{{c2}}}{{{ch}}}")[0],
+        "ans": make_options(f"\\frac{{{c2}}}{{{c1}}}", f"\\frac{{{c1}}}{{{c2}}}", f"\\frac{{{c1}}}{{{ch}}}", f"\\frac{{{c2}}}{{{ch}}}")[1],
+        "exp": f"$\\tan B = \\frac{{\\text{{đối}}}}{{\\text{{kề}}}} = \\frac{{AC}}{{AB}} = \\frac{{{c2}}}{{{c1}}}$"
+    })
+    exam.append({
+        "q": "Rút gọn biểu thức $M = \sin^2 30^\circ + \sin^2 60^\circ$ ta được:",
+        "options": make_options("1", "0", "0.5", "2")[0], "ans": make_options("1", "0", "0.5", "2")[1],
+        "exp": "Vì $30^\circ + 60^\circ = 90^\circ$ nên $\sin 60^\circ = \cos 30^\circ$. Suy ra $M = \sin^2 30^\circ + \cos^2 30^\circ = 1$."
+    })
+    h_thap = random.randint(10, 20)
+    exam.append({
+        "q": f"Một cái thang dài ${h_thap+2}m$ dựa vào tường tạo với mặt đất một góc $60^\circ$. Hỏi chân thang cách chân tường bao nhiêu mét?",
+        "options": make_options(f"{(h_thap+2)/2}", f"{h_thap+2}", f"{(h_thap+2)*math.sqrt(3)/2}", "Không tính được")[0],
+        "ans": make_options(f"{(h_thap+2)/2}", f"{h_thap+2}", f"{(h_thap+2)*math.sqrt(3)/2}", "Không tính được")[1],
+        "exp": f"Khoảng cách $d = L \cdot \cos 60^\circ = {h_thap+2} \cdot 0.5 = {(h_thap+2)/2}$ m."
+    })
+    exam.append({
+        "q": "Cho $\Delta ABC$ vuông tại $A$, có $\widehat{B} = 30^\circ, BC = 10cm$. Tính cạnh $AB$.",
+        "options": make_options("5\sqrt{3}", "5", "10\sqrt{3}", "10")[0], "ans": make_options("5\sqrt{3}", "5", "10\sqrt{3}", "10")[1],
+        "exp": "$AB = BC \cdot \cos B = 10 \cdot \cos 30^\circ = 10 \cdot \\frac{\sqrt{3}}{2} = 5\sqrt{3}$ cm."
+    })
 
     # --- 6. ĐƯỜNG TRÒN (6 CÂU) ---
-    for _ in range(5):
-        R = random.randint(4, 12)
-        d = random.randint(1, R-1)
-        q = f"Cho đường tròn $(O; {R}cm)$ và đường thẳng $d$. Biết khoảng cách từ tâm $O$ đến đường thẳng $d$ là ${d}cm$. Vị trí tương đối của đường thẳng và đường tròn là:"
-        # Với text dài, ta không bọc $, tạo custom options
-        opts_text = ["Cắt nhau tại 2 điểm", "Tiếp xúc nhau", "Không giao nhau", "Trùng nhau"]
-        random.shuffle(opts_text)
-        ans_idx = opts_text.index("Cắt nhau tại 2 điểm")
-        labels = ["A.", "B.", "C.", "D."]
-        exam.append({
-            "q": q, 
-            "options": [f"{labels[i]} {opts_text[i]}" for i in range(4)], 
-            "ans": labels[ans_idx], 
-            "exp": f"Vì khoảng cách $d = {d} < R = {R}$ nên đường thẳng cắt đường tròn tại 2 điểm phân biệt."
-        })
-    
-    # 1 Câu VDC Hình học
     exam.append({
-        "q": "**(Đề HSG)** Tứ giác $ABCD$ nội tiếp đường tròn $(O)$. Gọi $M, N, P, Q$ lần lượt là điểm chính giữa của các cung $AB, BC, CD, DA$. Khẳng định nào sau đây đúng về hai đoạn thẳng $MP$ và $NQ$?",
-        "options": ["A. Vuông góc với nhau", "B. Bằng nhau", "C. Song song với nhau", "D. Cắt nhau tại tâm O"],
-        "ans": "A",
-        "exp": "Góc tạo bởi 2 dây cung $MP$ và $NQ$ chắn nửa tổng số đo 4 cung, bằng $\\frac{360^\circ}{4} = 90^\circ$. Suy ra $MP \perp NQ$."
+        "q": "Góc nội tiếp chắn nửa đường tròn có số đo là:",
+        "options": make_options("90^\circ", "180^\circ", "60^\circ", "120^\circ")[0], "ans": make_options("90^\circ", "180^\circ", "60^\circ", "120^\circ")[1],
+        "exp": "Tính chất cơ bản: Góc nội tiếp chắn nửa đường tròn luôn là góc vuông ($90^\circ$)."
+    })
+    g_tam = random.randint(50, 100)
+    exam.append({
+        "q": f"Trên đường tròn $(O)$, góc ở tâm $\widehat{{AOB}} = {g_tam}^\circ$. Số đo cung nhỏ $AB$ là:",
+        "options": make_options(f"{g_tam}^\circ", f"{g_tam/2}^\circ", f"{180-g_tam}^\circ", f"{360-g_tam}^\circ")[0],
+        "ans": make_options(f"{g_tam}^\circ", f"{g_tam/2}^\circ", f"{180-g_tam}^\circ", f"{360-g_tam}^\circ")[1],
+        "exp": "Số đo cung nhỏ bằng đúng số đo góc ở tâm chắn cung đó."
+    })
+    exam.append({
+        "q": "Tứ giác $ABCD$ nội tiếp đường tròn. Nếu $\widehat{A} = 70^\circ$ thì số đo góc $\widehat{C}$ đối diện với nó là:",
+        "options": make_options("110^\circ", "70^\circ", "90^\circ", "20^\circ")[0], "ans": make_options("110^\circ", "70^\circ", "90^\circ", "20^\circ")[1],
+        "exp": "Trong tứ giác nội tiếp, tổng hai góc đối diện bằng $180^\circ$. Suy ra $\widehat{C} = 180^\circ - 70^\circ = 110^\circ$."
+    })
+    r_tron = random.randint(3, 8)
+    exam.append({
+        "q": f"Độ dài đường tròn có bán kính $R = {r_tron}cm$ là:",
+        "options": make_options(f"{2*r_tron}\pi", f"{r_tron}\pi", f"{r_tron**2}\pi", f"{(r_tron**2)/2}\pi")[0],
+        "ans": make_options(f"{2*r_tron}\pi", f"{r_tron}\pi", f"{r_tron**2}\pi", f"{(r_tron**2)/2}\pi")[1],
+        "exp": f"Chu vi $C = 2\pi R = 2 \cdot \pi \cdot {r_tron} = {2*r_tron}\pi$ (cm)."
+    })
+    exam.append({
+        "q": "Cho $(O; 5cm)$ và dây cung $AB = 8cm$. Khoảng cách từ tâm $O$ đến dây $AB$ là:",
+        "options": make_options("3cm", "4cm", "5cm", "6cm")[0], "ans": make_options("3cm", "4cm", "5cm", "6cm")[1],
+        "exp": "Gọi $H$ là trung điểm $AB \Rightarrow AH = 4cm$. Xét $\Delta OAH$ vuông tại $H$: $OH = \sqrt{OA^2 - AH^2} = \sqrt{5^2 - 4^2} = 3cm$."
+    })
+    exam.append({
+        "q": "**(Đề thi HSG)** Cho tam giác nhọn $ABC$ nội tiếp $(O)$, trực tâm $H$. Kẻ đường kính $AD$. Tứ giác $BHCD$ là hình gì?",
+        "options": ["A. Hình bình hành", "B. Hình chữ nhật", "C. Hình thoi", "D. Hình thang cân"], "ans": "A",
+        "exp": "Ta có $\widehat{ACD} = 90^\circ$ (góc nội tiếp chắn nửa đường tròn) $\Rightarrow DC \perp AC$. Mà $BH \perp AC$ (trực tâm) $\Rightarrow BH \parallel DC$. Tương tự $CH \parallel BD$. Vậy $BHCD$ là hình bình hành."
     })
 
     # --- 7. HÌNH KHỐI (3 CÂU) ---
-    for _ in range(3):
-        r = random.randint(2, 6)
-        h = random.randint(5, 10)
-        v_str = f"{r**2 * h}\\pi"
-        q = f"Một hình trụ có bán kính đáy $r = {r}$ cm và chiều cao $h = {h}$ cm. Thể tích của hình trụ là:"
-        opts, ans = make_options(v_str, f"{r*h}\\pi", f"{r**2 * h * 2}\\pi", f"\\frac{{{r**2 * h}\\pi}}{{3}}")
-        exam.append({"q": q, "options": opts, "ans": ans, "exp": f"Thể tích hình trụ: $V = \pi r^2 h = \pi . {r}^2 . {h} = {v_str}$ (cm³)"})
+    exam.append({
+        "q": "Diện tích xung quanh của hình trụ có bán kính đáy $r$ và chiều cao $h$ được tính bằng công thức:",
+        "options": ["A. $S = 2\pi r h$", "B. $S = \pi r^2 h$", "C. $S = \pi r l$", "D. $S = 4\pi r^2$"], "ans": "A",
+        "exp": "Lý thuyết cơ bản: Diện tích xung quanh hình trụ là chu vi đáy nhân chiều cao ($2\pi r \cdot h$)."
+    })
+    r_non = random.randint(3, 5); l_non = random.randint(6, 10)
+    exam.append({
+        "q": f"Một hình nón có bán kính đáy $r = {r_non}cm$, đường sinh $l = {l_non}cm$. Diện tích xung quanh của hình nón là:",
+        "options": make_options(f"{r_non*l_non}\pi", f"{r_non**2 * l_non}\pi", f"{2*r_non*l_non}\pi", f"{(r_non*l_non)/3}\pi")[0],
+        "ans": make_options(f"{r_non*l_non}\pi", f"{r_non**2 * l_non}\pi", f"{2*r_non*l_non}\pi", f"{(r_non*l_non)/3}\pi")[1],
+        "exp": f"Áp dụng công thức: $S_{{xq}} = \pi r l = \pi \cdot {r_non} \cdot {l_non} = {r_non*l_non}\pi$."
+    })
+    exam.append({
+        "q": "Thể tích của một hình cầu có bán kính $R$ là:",
+        "options": ["A. $V = \\frac{4}{3}\pi R^3$", "B. $V = 4\pi R^2$", "C. $V = \\frac{1}{3}\pi R^3$", "D. $V = \pi R^3$"], "ans": "A",
+        "exp": "Công thức chuẩn SGK Toán 9 Tập 2: Thể tích hình cầu bằng $\\frac{4}{3}\pi R^3$."
+    })
 
-    # --- 8. THỐNG KÊ & XÁC SUẤT (6 CÂU) ---
-    for _ in range(6):
-        total = random.randint(30, 60)
-        win = random.randint(5, 15)
-        # [ĐÃ SỬA LỖI PHÂN SỐ] Sử dụng dấu ngoặc nhọn an toàn cho LaTeX
-        prob = f"\\frac{{{win}}}{{{total}}}"
-        wrong1 = f"\\frac{{{win}}}{{{total+5}}}"
-        wrong2 = f"\\frac{{{win+2}}}{{{total}}}"
-        wrong3 = f"\\frac{{{total-win}}}{{{total}}}"
-        
-        q = f"Một chiếc hộp đựng ${total}$ quả bóng giống hệt nhau, trong đó có ${win}$ quả bóng đỏ. Lấy ngẫu nhiên 1 quả bóng. Xác suất lấy được quả bóng đỏ là:"
-        opts, ans = make_options(prob, wrong1, wrong2, wrong3)
-        exam.append({"q": q, "options": opts, "ans": ans, "exp": f"Xác suất: $P = \\frac{{\\text{{số kết quả thuận lợi}}}}{{\\text{{tổng số kết quả}}}} = {prob}$"})
+    # --- 8. THỐNG KÊ XÁC SUẤT (6 CÂU) ---
+    for _ in range(5):
+        total = random.randint(20, 50)
+        win = random.randint(2, 10)
+        q = f"Trong một hộp kín có {total} viên bi kích thước giống nhau, trong đó có {win} viên bi xanh. Lấy ngẫu nhiên 1 viên. Xác suất lấy được bi xanh là:"
+        opts, ans = make_options(f"\\frac{{{win}}}{{{total}}}", f"\\frac{{{win}}}{{{total-win}}}", f"\\frac{{{total-win}}}{{{total}}}", f"\\frac{{1}}{{{win}}}")
+        exam.append({"q": q, "options": opts, "ans": ans, "exp": f"Xác suất = $\\frac{{\\text{{Số bi xanh}}}}{{\\text{{Tổng số bi}}}} = \\frac{{{win}}}{{{total}}}$"})
+    
+    exam.append({
+        "q": "**(Vận dụng)** Gieo đồng thời hai con xúc xắc cân đối đồng chất. Xác suất để tổng số chấm xuất hiện trên 2 mặt bằng 7 là:",
+        "options": make_options("\\frac{1}{6}", "\\frac{1}{36}", "\\frac{7}{36}", "\\frac{1}{12}")[0],
+        "ans": make_options("\\frac{1}{6}", "\\frac{1}{36}", "\\frac{7}{36}", "\\frac{1}{12}")[1],
+        "exp": "Không gian mẫu $\Omega = 36$. Các biến cố thuận lợi: (1,6), (2,5), (3,4), (4,3), (5,2), (6,1) có 6 trường hợp. $P = \\frac{6}{36} = \\frac{1}{6}$."
+    })
 
-    # Xáo trộn toàn bộ 40 câu
     random.shuffle(exam)
     return exam[:40]
 
@@ -430,7 +524,6 @@ def render_exam_content(text):
     st.write(format_math(text))
 
 def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_ans_data=None):
-    
     if is_review and user_ans_data:
         st.markdown(f"### 🔍 XEM LẠI BÀI: {exam_data.get('title')}")
         questions = exam_data['questions']
@@ -459,6 +552,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
             icon = "✅ ĐÚNG" if is_correct else "❌ SAI"
             with st.expander(f"Câu {i+1}: {icon} | Đáp án chuẩn: {q['ans']}"):
                 render_exam_content(q['q'])
+                if 'image' in q and q['image']: st.image(q['image'])
                 formatted_choice = format_math(str(usr_choice)) if usr_choice else 'Không chọn'
                 st.markdown(f"**Bạn đã chọn:** {formatted_choice}")
                 if not is_correct: st.error("Câu trả lời chưa chính xác.")
@@ -513,6 +607,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
             for i, q in enumerate(questions):
                 st.markdown(f"**Câu {i+1}:**")
                 render_exam_content(q['q'])
+                if 'image' in q and q['image']: st.image(q['image'])
                 formatted_options = [format_math(q_opt) for q_opt in q['options']]
                 st.session_state.student_answers[i] = st.radio("Chọn đáp án:", formatted_options, index=None, key=f"q_{i}")
                 st.divider()
@@ -667,56 +762,37 @@ def main():
         elif choice == "📊 Thống kê":
             st.header("📊 Thống kê & Phân tích Đề thi")
             conn = get_conn()
-            
             if role == "core_admin":
                 exams = conn.execute("SELECT id, title, target_class, questions_json FROM mandatory_exams").fetchall()
             else:
                 classes_str = "', '".join([x.strip() for x in st.session_state.managed.split(',')])
                 exams = conn.execute(f"SELECT id, title, target_class, questions_json FROM mandatory_exams WHERE target_class IN ('{classes_str}') OR target_class='Tất cả các lớp'").fetchall()
-                
-            if not exams:
-                st.info("Chưa có bài thi nào được giao.")
+            if not exams: st.info("Chưa có bài thi nào được giao.")
             else:
                 exam_dict = {f"[{e[2]}] {e[1]}": e for e in exams}
                 sel_exam_name = st.selectbox("📌 Chọn đề thi để xem thống kê:", ["-- Chọn đề thi --"] + list(exam_dict.keys()))
-                
                 if sel_exam_name != "-- Chọn đề thi --":
                     exam_id, exam_title, target_class, q_json_str = exam_dict[sel_exam_name]
                     questions = json.loads(q_json_str)
                     num_questions = len(questions)
-                    
                     tb1, tb2, tb3 = st.tabs(["📋 Điểm số", "⚠️ Trốn thi", "📉 Phân tích câu hỏi"])
-                    
                     res_df = pd.read_sql_query("SELECT u.fullname AS 'Họ tên', u.username, u.class_name AS 'Lớp', r.score AS 'Điểm', r.user_answers_json FROM mandatory_results r JOIN users u ON r.username = u.username WHERE r.exam_id = ?", conn, params=(exam_id,))
-                    
                     with tb1:
                         if res_df.empty: st.info("Chưa có học sinh nào nộp bài.")
                         else: st.dataframe(res_df[['Họ tên', 'Lớp', 'Điểm']], use_container_width=True)
-                    
                     with tb2:
                         if target_class == "Tất cả các lớp":
-                            if role == "core_admin":
-                                all_st = pd.read_sql_query("SELECT fullname, username, class_name FROM users WHERE role='student'", conn)
-                            else:
-                                classes_str = "', '".join([x.strip() for x in st.session_state.managed.split(',')])
-                                all_st = pd.read_sql_query(f"SELECT fullname, username, class_name FROM users WHERE role='student' AND class_name IN ('{classes_str}')", conn)
-                        else:
-                            all_st = pd.read_sql_query("SELECT fullname, username, class_name FROM users WHERE role='student' AND class_name=?", conn, params=(target_class,))
-                            
+                            if role == "core_admin": all_st = pd.read_sql_query("SELECT fullname, username, class_name FROM users WHERE role='student'", conn)
+                            else: all_st = pd.read_sql_query(f"SELECT fullname, username, class_name FROM users WHERE role='student' AND class_name IN ('{classes_str}')", conn)
+                        else: all_st = pd.read_sql_query("SELECT fullname, username, class_name FROM users WHERE role='student' AND class_name=?", conn, params=(target_class,))
                         if res_df.empty: missing_df = all_st
                         else:
                             submitted = res_df['username'].tolist()
                             missing_df = all_st[~all_st['username'].isin(submitted)]
-                            
-                        if missing_df.empty:
-                            st.success("🎉 Tuyệt vời! 100% học sinh đã hoàn thành bài thi.")
-                        else:
-                            st.warning(f"🚨 Có {len(missing_df)} học sinh chưa làm bài:")
-                            st.dataframe(missing_df[['fullname', 'class_name', 'username']].rename(columns={'fullname':'Họ tên', 'class_name':'Lớp', 'username':'Tài khoản'}), use_container_width=True)
-
+                        if missing_df.empty: st.success("🎉 Tuyệt vời! 100% học sinh đã hoàn thành bài thi.")
+                        else: st.warning(f"🚨 Có {len(missing_df)} học sinh chưa làm bài:"); st.dataframe(missing_df[['fullname', 'class_name', 'username']].rename(columns={'fullname':'Họ tên', 'class_name':'Lớp', 'username':'Tài khoản'}), use_container_width=True)
                     with tb3:
-                        if res_df.empty:
-                            st.info("Chưa có dữ liệu để phân tích biểu đồ.")
+                        if res_df.empty: st.info("Chưa có dữ liệu để phân tích biểu đồ.")
                         else:
                             wrong_counts = {f"Câu {i+1}": 0 for i in range(num_questions)}
                             for idx, row in res_df.iterrows():
@@ -725,12 +801,9 @@ def main():
                                     for i, q in enumerate(questions):
                                         correct_char = q['ans'].strip()[0].upper()
                                         user_choice = u_ans.get(str(i), u_ans.get(i, "")) 
-                                        if not user_choice or not str(user_choice).strip().upper().startswith(correct_char):
-                                            wrong_counts[f"Câu {i+1}"] += 1
+                                        if not user_choice or not str(user_choice).strip().upper().startswith(correct_char): wrong_counts[f"Câu {i+1}"] += 1
                                 except: pass
-                                        
                             stat_df = pd.DataFrame(list(wrong_counts.items()), columns=['Câu hỏi', 'Số lượt sai'])
-                            st.markdown("**📊 Biểu đồ số lượt chọn SAI theo từng câu:**")
                             st.bar_chart(stat_df.set_index('Câu hỏi'))
             conn.close()
 
@@ -763,14 +836,13 @@ def main():
             conn.close()
 
         elif choice == "🚀 Luyện đề tự do":
-            st.header("🚀 Luyện đề tự do (Thuật toán 100% Offline)") 
-            st.info("💡 Hệ thống sử dụng Động cơ Toán học để tự động trộn số liệu, tạo ra hàng ngàn đề khác nhau không cần chờ AI.")
+            st.header("🚀 Luyện đề tự do") 
             if st.session_state.get('taking_free_exam') is None:
                 if st.button("TẠO ĐỀ", type="primary"): 
                     with st.spinner("Đang tạo đề, xin đợi..."):
                         time.sleep(0.5) 
                         free_exam = generate_algorithmic_practice()
-                        st.session_state.taking_free_exam = {'title': "Luyện đề Tự do (Offline)", 'time_limit': 90, 'questions': free_exam}
+                        st.session_state.taking_free_exam = {'title': "Luyện đề Tự do (Chuẩn Form HSG & Lên Lớp 10)", 'time_limit': 90, 'questions': free_exam}
                         st.rerun()
             else:
                 take_exam_ui(st.session_state.taking_free_exam, 9999, False)
