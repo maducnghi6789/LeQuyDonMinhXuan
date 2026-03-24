@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V36 (BẢN A1 SUPREME - ĐỘNG CƠ TOÁN HỌC VECTOR & ĐA DẠNG HÓA) ---
+# --- CẤU HÌNH HỆ THỐNG V36.1 (BẢN A1 SUPREME - FIX LỖI TOÁN HỌC) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -101,6 +101,16 @@ def init_db():
     c.execute("UPDATE users SET password='123@' WHERE password LIKE '$2b$12$%' AND role='student'")
     conn.commit(); conn.close()
 
+def log_deletion(deleted_by, entity_type, entity_name, reason):
+    try:
+        conn = get_conn()
+        vn_time = datetime.now(VN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        try: conn.execute("INSERT INTO deletion_logs (deleted_by, entity_type, entity_name, reason, timestamp) VALUES (?, ?, ?, ?, ?)", (deleted_by, entity_type, entity_name, reason, vn_time))
+        except:
+            pass
+        conn.commit(); conn.close()
+    except: pass
+
 # ==========================================
 # 3. QUẢN LÝ NHÂN SỰ & HỌC SINH
 # ==========================================
@@ -147,7 +157,9 @@ def account_manager_ui(target_role, specific_class=None):
                 if b_reset.form_submit_button("🔄 RESET VỀ 123@"):
                     conn.execute("UPDATE users SET password=? WHERE username=?", ("123@", sel_u)); conn.commit(); st.success("✅ Xong!"); time.sleep(1); st.rerun()
                 if b_del.form_submit_button("🗑️ XÓA TÀI KHOẢN"):
-                    conn.execute("DELETE FROM users WHERE username=?", (sel_u,)); conn.commit(); st.warning("💥 Đã xóa"); time.sleep(0.5); st.rerun()
+                    log_deletion(st.session_state.current_user, "Tài khoản", sel_u, "Xóa thủ công")
+                    conn.execute("DELETE FROM users WHERE username=?", (sel_u,)); conn.execute("DELETE FROM mandatory_results WHERE username=?", (sel_u,))
+                    conn.commit(); st.warning("💥 Đã xóa"); time.sleep(0.5); st.rerun()
     else: st.info("Chưa có dữ liệu.")
     conn.close()
 
@@ -241,7 +253,6 @@ def parse_exam_with_ai(raw_text, api_key):
 
 # ==========================================
 # 5. BỘ CÔNG CỤ VẼ HÌNH ĐỘNG SVG (VECTOR GRAPHICS)
-# Vẽ hình sắc nét 100% dựa trên đúng dữ liệu biến số bài toán
 # ==========================================
 def svg_right_triangle(base_label, height_label, hyp_label, angle_label, obj_name="Cây"):
     return f"""
@@ -260,7 +271,6 @@ def svg_right_triangle(base_label, height_label, hyp_label, angle_label, obj_nam
 
 def svg_box_of_balls(color1_name, color1_count, color2_name, color2_count):
     balls = ""
-    # Map colors mathematically
     c_map = {"xanh": "#2563eb", "đỏ": "#dc2626", "vàng": "#eab308", "trắng": "#f8fafc"}
     c1 = c_map.get(color1_name, "#2563eb")
     c2 = c_map.get(color2_name, "#dc2626")
@@ -295,7 +305,6 @@ def generate_algorithmic_practice():
     exam = []
     
     def make_options(*args):
-        # Format đồng bộ toàn bộ đáp án bằng $...$ LaTeX chuẩn
         opts = [f"${str(opt)}$" for opt in args]
         correct_val_formatted = opts[0]
         random.shuffle(opts)
@@ -346,12 +355,9 @@ def generate_algorithmic_practice():
     
     exam.append({
         "q": "Rút gọn biểu thức $M = \sqrt{(2-\sqrt{5})^2} + \sqrt{5}$",
-        "options": make_options("2", "2\sqrt{5}-2", "2\sqrt{5}+2", "-2")[0], "ans": make_options("2", "2\sqrt{5}-2", "2\sqrt{5}+2", "-2")[1],
-        "exp": "Vì $2 = \sqrt{4} < \sqrt{5}$ nên $2-\sqrt{5} < 0$. Do đó $M = -(2-\sqrt{5}) + \sqrt{5} = \sqrt{5} - 2 + \sqrt{5} = 2\sqrt{5} - 2$. Wait, đáp án đúng là $2\sqrt{5}-2$." 
+        "options": make_options("2\sqrt{5}-2", "2", "-2", "4\sqrt{5}")[0], "ans": make_options("2\sqrt{5}-2", "2", "-2", "4\sqrt{5}")[1],
+        "exp": "Vì $2 < \sqrt{5}$ nên $\sqrt{(2-\sqrt{5})^2} = \sqrt{5}-2$. Vậy $M = \sqrt{5}-2 + \sqrt{5} = 2\sqrt{5}-2$."
     })
-    # Fix the exp logic dynamically to ensure it aligns
-    exam[-1]["exp"] = "Vì $2 < \sqrt{5}$ nên $\sqrt{(2-\sqrt{5})^2} = \sqrt{5}-2$. Vậy $M = \sqrt{5}-2 + \sqrt{5} = 2\sqrt{5}-2$."
-    exam[-1]["options"], exam[-1]["ans"] = make_options("2\sqrt{5}-2", "2", "-2", "4\sqrt{5}")
 
     # --- 2. HÀM SỐ y = ax^2 (3 CÂU) ---
     a2 = random.choice([-4, -2, 2, 4])
@@ -463,7 +469,6 @@ def generate_algorithmic_practice():
         "ans": "A", "exp": "Lý thuyết cơ bản: $h^2 = b' \cdot c'$."
     })
     
-    # 1. Câu Cột cờ / Tòa nhà / Cây (Đổi ngữ cảnh ngẫu nhiên)
     obj_names = ["tòa nhà", "cột cờ", "tháp hải đăng", "cái cây"]
     obj = random.choice(obj_names)
     b_obj = random.randint(4, 15)
@@ -477,7 +482,6 @@ def generate_algorithmic_practice():
         "exp": f"Áp dụng tỉ số lượng giác: Chiều cao = Bóng $\\times \\tan({g_obj}^\circ) = {b_obj} \\times \\tan({g_obj}^\circ) \approx {h_obj}m$."
     })
     
-    # 2. Câu Máy Bay
     l_bay = random.randint(4, 15)
     g_bay = random.choice([20, 25, 30])
     h_bay = round(l_bay * math.sin(math.radians(g_bay)), 1)
@@ -489,7 +493,6 @@ def generate_algorithmic_practice():
         "exp": f"Độ cao = Quãng đường $\\times \\sin({g_bay}^\circ) = {l_bay} \\times \\sin({g_bay}^\circ) \approx {h_bay}km$."
     })
     
-    # 3. Câu Thang
     h_thang = random.randint(4, 10)
     exam.append({
         "q": f"Một cái thang dài ${h_thang}m$ dựa vào tường. Biết chân thang cách tường ${h_thang/2}m$. Góc tạo bởi thang và mặt đất là:",
@@ -534,8 +537,8 @@ def generate_algorithmic_practice():
         "exp": f"Chu vi $C = 2\pi R = 2\pi({r_tron}) = {2*r_tron}\pi$."
     })
     
-    d_day = random.choice([6, 8, 12])
-    r_tron2 = random.choice([5, 10])
+    # [FIX LỖI TOÁN HỌC DÂY CUNG]: Lấy từ bộ số Pytago để đảm bảo R > d/2
+    r_tron2, d_day = random.choice([(5, 6), (5, 8), (10, 12), (10, 16), (13, 10), (13, 24)])
     h_kc = math.sqrt(r_tron2**2 - (d_day/2)**2)
     exam.append({
         "q": f"Cho đường tròn tâm $O$ bán kính ${r_tron2}cm$ và dây cung $AB = {d_day}cm$. Khoảng cách từ tâm $O$ đến dây $AB$ là:",
