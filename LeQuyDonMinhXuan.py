@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V40 (A1 SUPREME - POOL 50+ DẠNG BÀI & RANDOM MA TRẬN) ---
+# --- CẤU HÌNH HỆ THỐNG V40.1 (A1 SUPREME - FINAL POOL & FIX LỖI ĐỒ HỌA SVG) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -246,6 +246,7 @@ def parse_exam_with_ai(raw_text, api_key):
 
 # ==========================================
 # 5. BỘ CÔNG CỤ VẼ HÌNH ĐỘNG SVG (VECTOR GRAPHICS)
+# Đã fix lỗi NameError và bổ sung đầy đủ các hình vẽ!
 # ==========================================
 def svg_bar_chart(cat1, val1, cat2, val2, cat3, val3, title="Biểu đồ Tần số"):
     max_v = max(val1, val2, val3, 1)
@@ -282,7 +283,6 @@ def svg_pie_chart(p1, p2, p3):
     """
 
 def svg_parabola_intersection(a_val, b_val):
-    # Dynamic values representation on the graph
     return f"""
     <div style="display: flex; justify-content: center; margin: 15px 0;">
     <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
@@ -399,9 +399,23 @@ def svg_box_of_balls(color1_name, color1_count, color2_name, color2_count):
     </svg></div>
     """
 
+# ĐÂY LÀ HÀM BỊ THIẾU Ở BẢN TRƯỚC ĐÃ ĐƯỢC THÊM VÀO!
+def svg_right_triangle(base_label, height_label, hyp_label, angle_label, obj_name="Máy bay"):
+    return f"""
+    <div style="display: flex; justify-content: center; margin: 15px 0;">
+    <svg width="220" height="160" viewBox="0 0 220 160" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="30,130 180,130 180,30" style="fill:#f8fafc;stroke:#334155;stroke-width:2" />
+        <polyline points="170,130 170,120 180,120" style="fill:none;stroke:#334155;stroke-width:1.5" />
+        <text x="90" y="148" font-family="Arial" font-size="14" font-weight="bold" fill="#0f172a">{base_label}</text>
+        <text x="188" y="85" font-family="Arial" font-size="14" font-weight="bold" fill="#0f172a">{height_label}</text>
+        <text x="80" y="70" font-family="Arial" font-size="14" font-weight="bold" fill="#0f172a" transform="rotate(-33 80 70)">{hyp_label}</text>
+        <text x="55" y="125" font-family="Arial" font-size="13" font-weight="bold" fill="#dc2626">{angle_label}</text>
+        <path d="M 60 130 A 30 30 0 0 0 50 115" fill="none" stroke="#dc2626" stroke-width="1.5"/>
+    </svg></div>
+    """
+
 # ==========================================
-# 6. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ - 50+ KHUÔN ĐỘC LẬP
-# Lọc 40 câu theo chuẩn ma trận
+# 6. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE)
 # ==========================================
 def generate_algorithmic_practice():
     def make_opts(*args):
@@ -427,8 +441,8 @@ def generate_algorithmic_practice():
     pool_1.append({"q": f"Tính giá trị của biểu thức $P = \sqrt{{{a1**2}}} - \sqrt{{{(-b1)**2}}}$", "options": opt, "ans": ans, "exp": f"$P = {a1} - |- {b1}| = {a1} - {b1} = {a1-b1}$."})
     
     m2 = random.randint(2, 5); n2 = random.randint(1, 9)
-    opt, ans = make_opts(f"x \\le \\frac{{{n2}}}{{{m2}}}", f"x \\ge \\frac{{{n2}}}{{{m2}}}", f"x < \\frac{{{n2}}}{{{m2}}}", f"x > \\frac{{{n2}}}{{{m2}}}")
-    pool_1.append({"q": f"Biểu thức $\sqrt{{{n2} - {m2}x}}$ xác định khi và chỉ khi:", "options": opt, "ans": ans, "exp": f"${n2} - {m2}x \\ge 0 \Leftrightarrow {m2}x \\le {n2} \Leftrightarrow x \\le \\frac{{{n2}}}{{{m2}}}$."})
+    opt, ans = make_opts(f"x \le \\frac{{{n2}}}{{{m2}}}", f"x \ge \\frac{{{n2}}}{{{m2}}}", f"x < \\frac{{{n2}}}{{{m2}}}", f"x > \\frac{{{n2}}}{{{m2}}}")
+    pool_1.append({"q": f"Biểu thức $\sqrt{{{n2} - {m2}x}}$ xác định khi và chỉ khi:", "options": opt, "ans": ans, "exp": f"${n2} - {m2}x \ge 0 \Leftrightarrow {m2}x \le {n2} \Leftrightarrow x \le \\frac{{{n2}}}{{{m2}}}$."})
 
     k3 = random.choice([2, 3, 5, 7])
     opt, ans = make_opts(f"2\sqrt{{{k3}}}", f"\sqrt{{{k3}}}", f"\\frac{{2}}{{\sqrt{{{k3}}}}}", f"{k3}\sqrt{{{k3}}}")
@@ -444,13 +458,9 @@ def generate_algorithmic_practice():
     pool_1.append({"q": "Rút gọn biểu thức $M = \sqrt{(2-\sqrt{5})^2} + \sqrt{5}$", "options": opt, "ans": ans, "exp": "Vì $2 < \sqrt{5}$ nên $\sqrt{(2-\sqrt{5})^2} = |2-\sqrt{5}| = \sqrt{5}-2$. Vậy $M = \sqrt{5}-2 + \sqrt{5} = 2\sqrt{5}-2$."})
 
     n7 = random.randint(2, 5)
-    opt, ans = make_opts(f"{n7-1}", f"{n7}", f"{n7+1}", f"{n7**2}")
-    pool_1.append({"q": f"Biết $\sqrt{{x}} = {n7-1}$, thì $x$ bằng:", "options": opt, "ans": ans, "exp": f"Bình phương hai vế: $x = ({n7-1})^2 = {(n7-1)**2}$."}) # Wait, opts are strings, let's fix.
-    
-    # Fix above to proper string math
     v7 = (n7-1)**2
     opt, ans = make_opts(v7, v7-1, v7+1, v7*2)
-    pool_1[-1] = {"q": f"Biết $\sqrt{{x}} = {n7-1}$, thì $x$ bằng:", "options": opt, "ans": ans, "exp": f"Bình phương hai vế: $x = ({n7-1})^2 = {v7}$."}
+    pool_1.append({"q": f"Biết $\sqrt{{x}} = {n7-1}$, thì $x$ bằng:", "options": opt, "ans": ans, "exp": f"Bình phương hai vế: $x = ({n7-1})^2 = {v7}$."})
 
     # --- POOL 2: HÀM SỐ & ĐỒ THỊ ---
     a_h1 = random.choice([-3, -2, 2, 3]); x_h1 = random.randint(1, 3)
@@ -470,8 +480,8 @@ def generate_algorithmic_practice():
     opt, ans = make_opts("-3", "3", "4", "-4")
     pool_2.append({"q": "Hệ số góc của đường thẳng $y = -3x + 4$ là:", "options": opt, "ans": ans, "exp": "Đường thẳng $y = ax + b$ có hệ số góc là $a$. Vậy hệ số góc là $-3$."})
 
-    opt, ans = make_opts("m = \\pm 1", "m = 1", "m = -1", "m = 2")
-    pool_2.append({"q": "Hai đường thẳng $y = 2x + 1$ và $y = (m^2+1)x + 3$ song song với nhau khi:", "options": opt, "ans": ans, "exp": "Điều kiện song song: Hệ số góc bằng nhau $\Rightarrow m^2 + 1 = 2 \Leftrightarrow m^2 = 1 \Leftrightarrow m = \\pm 1$."})
+    opt, ans = make_opts("m = \pm 1", "m = 1", "m = -1", "m = 2")
+    pool_2.append({"q": "Hai đường thẳng $y = 2x + 1$ và $y = (m^2+1)x + 3$ song song với nhau khi:", "options": opt, "ans": ans, "exp": "Điều kiện song song: Hệ số góc bằng nhau $\Rightarrow m^2 + 1 = 2 \Leftrightarrow m^2 = 1 \Leftrightarrow m = \pm 1$."})
 
     a_h7 = random.choice([2, 4])
     opt, ans = make_opts(a_h7*4, -a_h7*4, a_h7*2, -a_h7*2)
@@ -495,7 +505,7 @@ def generate_algorithmic_practice():
     pool_3.append({"q": f"Gọi $x_1, x_2$ là nghiệm của phương trình $x^2 {s_str} {p_str} = 0$. Giá trị của $x_1 \cdot x_2$ là:", "options": opt, "ans": ans, "exp": f"Theo hệ thức Vi-ét: $x_1 \cdot x_2 = \\frac{{c}}{{a}} = {P}$."})
 
     opt, ans = make_opts("4", "2", "0", "1")
-    pool_3.append({"q": "Số nghiệm của phương trình $x^4 - 5x^2 + 4 = 0$ là:", "options": opt, "ans": ans, "exp": "Đặt $t = x^2 \\ge 0$, pt trở thành $t^2 - 5t + 4 = 0$. Có nghiệm $t=1$ và $t=4$. Từ đó suy ra $x = \\pm 1$ và $x = \\pm 2$. Vậy có 4 nghiệm."})
+    pool_3.append({"q": "Số nghiệm của phương trình $x^4 - 5x^2 + 4 = 0$ là:", "options": opt, "ans": ans, "exp": "Đặt $t = x^2 \ge 0$, pt trở thành $t^2 - 5t + 4 = 0$. Có nghiệm $t=1$ và $t=4$. Từ đó suy ra $x = \pm 1$ và $x = \pm 2$. Vậy có 4 nghiệm."})
 
     opt, ans = make_opts("m = 4", "m = -4", "m = 2", "m = -2")
     pool_3.append({"q": "Điều kiện của tham số $m$ để phương trình $x^2 - 2x + m - 3 = 0$ có nghiệm kép là:", "options": opt, "ans": ans, "exp": "$\Delta' = (-1)^2 - 1(m-3) = 4 - m$. Để phương trình có nghiệm kép thì $\Delta' = 0 \Leftrightarrow m = 4$."})
@@ -508,17 +518,17 @@ def generate_algorithmic_practice():
     pool_3.append({"q": f"Số cặp số nguyên $(x; y)$ thỏa mãn phương trình $x y - 2x - y = {c_ng}$ là:", "options": opt, "ans": ans, "exp": f"Biến đổi pt thành $x(y-2) - (y-2) = {c_ng+2} \Leftrightarrow (x-1)(y-2) = {c_ng+2}$. Dựa vào số ước nguyên của ${c_ng+2}$ để tìm số cặp."})
 
     # --- POOL 4: BẤT PHƯƠNG TRÌNH ---
-    opt, ans = make_opts("x < 4", "x > 4", "x \\ge 4", "x \\le 4")
+    opt, ans = make_opts("x < 4", "x > 4", "x \ge 4", "x \le 4")
     pool_4.append({"q": "Tập nghiệm của bất phương trình $-3x + 12 > 0$ là:", "options": opt, "ans": ans, "exp": "$-3x > -12$. Chia hai vế cho số âm phải đổi chiều $\Rightarrow x < 4$."})
     
     opt, ans = make_opts("-2", "-1", "-3", "-4")
     pool_4.append({"q": "Nghiệm nguyên âm lớn nhất thỏa mãn bất phương trình $2x + 5 > 0$ là:", "options": opt, "ans": ans, "exp": "$2x > -5 \Leftrightarrow x > -2.5$. Số nguyên âm lớn nhất thỏa mãn là $-2$."})
     
-    opt, ans = make_opts("m > \\frac{5}{2}", "m < \\frac{5}{2}", "m \\ge \\frac{5}{2}", "m \\neq \\frac{5}{2}")
+    opt, ans = make_opts("m > \\frac{5}{2}", "m < \\frac{5}{2}", "m \ge \\frac{5}{2}", "m \neq \\frac{5}{2}")
     pool_4.append({"q": "Tìm tất cả các giá trị của tham số $m$ để hàm số $y = (5 - 2m)x + 1$ nghịch biến trên $\mathbb{R}$.", "options": opt, "ans": ans, "exp": "Hàm số nghịch biến khi hệ số góc $a < 0 \Leftrightarrow 5 - 2m < 0 \Leftrightarrow 2m > 5 \Leftrightarrow m > \\frac{5}{2}$."})
     
     opt, ans = make_opts("2", "1", "4", "0.5")
-    pool_4.append({"q": "Cho $x, y > 0$ thỏa mãn $x+y=2$. Giá trị nhỏ nhất của biểu thức $P = \\frac{1}{x} + \\frac{1}{y}$ là:", "options": opt, "ans": ans, "exp": "Áp dụng BĐT $\\frac{1}{x} + \\frac{1}{y} \\ge \\frac{4}{x+y} = \\frac{4}{2} = 2$. Dấu = xảy ra khi $x=y=1$."})
+    pool_4.append({"q": "Cho $x, y > 0$ thỏa mãn $x+y=2$. Giá trị nhỏ nhất của biểu thức $P = \\frac{1}{x} + \\frac{1}{y}$ là:", "options": opt, "ans": ans, "exp": "Áp dụng BĐT $\\frac{1}{x} + \\frac{1}{y} \ge \\frac{4}{x+y} = \\frac{4}{2} = 2$. Dấu = xảy ra khi $x=y=1$."})
 
     # --- POOL 5: HỆ THỨC LƯỢNG ---
     pool_5.append({"q": "Trong tam giác vuông, bình phương đường cao ứng với cạnh huyền bằng:", "options": ["A. Tích hai hình chiếu của hai cạnh góc vuông trên cạnh huyền", "B. Tích hai cạnh góc vuông", "C. Tích cạnh huyền và đường cao", "D. Tổng bình phương hai cạnh góc vuông"], "ans": "A", "exp": "Lý thuyết cơ bản: $h^2 = b' \cdot c'$."})
@@ -529,7 +539,7 @@ def generate_algorithmic_practice():
     b27 = random.randint(4, 15); g27 = random.choice([30, 45, 60]); h27 = round(b27 * math.tan(math.radians(g27)), 1)
     obj = random.choice(["tòa nhà", "cột cờ", "tháp hải đăng", "cái cây"])
     opt, ans = make_opts(f"{h27}m", f"{round(b27/math.tan(math.radians(g27)),1)}m", f"{round(b27*math.sin(math.radians(g27)),1)}m", f"{round(b27*math.cos(math.radians(g27)),1)}m")
-    pool_5.append({"q": f"Bóng của một {obj} trên mặt đất dài ${b27}m$. Tia sáng mặt trời tạo với mặt đất một góc ${g27}^\circ$. Chiều cao của {obj} xấp xỉ bằng:", "svg": svg_building("? m", f"{b27}m", f"{g27}°"), "options": opt, "ans": ans, "exp": f"Chiều cao = Bóng $\\times \\tan({g27}^\circ) = {b27} \\times \\tan({g27}^\circ) \\approx {h27}m$."})
+    pool_5.append({"q": f"Bóng của một {obj} trên mặt đất dài ${b27}m$. Tia sáng mặt trời tạo với mặt đất một góc ${g27}^\circ$. Chiều cao của {obj} xấp xỉ bằng:", "svg": svg_building("? m", f"{b27}m", f"{g27}°"), "options": opt, "ans": ans, "exp": f"Chiều cao = Bóng $\\times \\tan({g27}^\circ) = {b27} \\times \\tan({g27}^\circ) \approx {h27}m$."})
     
     l_bay = random.randint(4, 15); g_bay = random.choice([20, 25, 30]); h_bay = round(l_bay * math.sin(math.radians(g_bay)), 1)
     opt, ans = make_opts(f"{h_bay}km", f"{round(l_bay * math.cos(math.radians(g_bay)), 1)}km", f"{round(l_bay / math.sin(math.radians(g_bay)), 1)}km", f"{round(l_bay * math.tan(math.radians(g_bay)), 1)}km")
@@ -601,9 +611,7 @@ def generate_algorithmic_practice():
     pool_8.append({"q": "Gieo một con xúc xắc cân đối. Xác suất để mặt xuất hiện là số nguyên tố bằng:", "options": opt, "ans": ans, "exp": "Số nguyên tố thuộc tập $\{2; 3; 5\}$. Xác suất $P = \\frac{3}{6} = \\frac{1}{2}$."})
 
     # --- Lấy ngẫu nhiên theo ma trận ---
-    # Tổng 40 câu: P1(5), P2(5), P3(7), P4(3), P5(5), P6(6), P7(4), P8(5)
     selected = random.sample(pool_1, 5) + random.sample(pool_2, 5) + random.sample(pool_3, 7) + random.sample(pool_4, 3) + random.sample(pool_5, 5) + random.sample(pool_6, 6) + random.sample(pool_7, 4) + random.sample(pool_8, 5)
-    
     random.shuffle(selected)
     return selected
 
