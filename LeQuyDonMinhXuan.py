@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V40.1 (A1 SUPREME - FINAL POOL & FIX LỖI ĐỒ HỌA SVG) ---
+# --- CẤU HÌNH HỆ THỐNG V41 (A1 SUPREME - TÍCH HỢP TÍNH NĂNG ADMIN AI KÉP) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -201,7 +201,7 @@ def import_student_module():
                     conn.commit(); st.success(f"Đã tạo: {u} (MK: 123@)"); conn.close()
 
 # ==========================================
-# 4. MODULE AI ĐỌC PDF (GIAO ĐỀ BẮT BUỘC)
+# 4. MODULE AI ĐỌC & BIÊN SOẠN ĐỀ (ADMIN AI ENGINE)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -211,6 +211,7 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key_string):
+    """Lõi AI: Load Balancer xoay vòng API Key, tự động bắt lỗi 429 và thử lại."""
     if not api_key_string or not api_key_string.strip(): return "LỖI: Chưa nhập API Key."
     keys = [k.strip() for k in api_key_string.split(',') if k.strip()]
     random.shuffle(keys)
@@ -233,20 +234,44 @@ def safe_ai_generate(prompt, api_key_string):
                 else: continue
         if "429" in last_err or "quota" in last_err: time.sleep(5)
         else: break
-    return f"LỖI TẠO ĐỀ TỪ PDF: Vui lòng kiểm tra lại API Key hoặc File PDF."
+    return f"LỖI TẠO ĐỀ: Hệ thống AI đang bận hoặc API Key không hợp lệ."
 
-def parse_exam_with_ai(raw_text, api_key):
-    prompt = f"""Trích xuất 40 câu trắc nghiệm Toán từ văn bản dưới đây.
-    YÊU CẦU ĐỊNH DẠNG: Trả về mảng JSON Array: [{{"q": "...", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "..."}}]
-    LƯU Ý: Bọc các công thức trong dấu $. Dùng nháy đơn (') bên trong chuỗi.
-    VĂN BẢN:
+def generate_ai_exam_for_admin(api_key):
+    """Tính năng 1: AI tự động sinh 40 câu hỏi theo ma trận và tự biên soạn hướng dẫn giải."""
+    prompt = """Sáng tác MỘT ĐỀ THI TRẮC NGHIỆM TOÁN THCS GỒM ĐÚNG 40 CÂU KHÁC NHAU.
+    MA TRẬN CHỦ ĐỀ CẦN CÓ:
+    - Căn thức, Hàm số y=ax^2, PT & Hệ PT, Bất PT, Hệ thức lượng, Đường tròn, Hình khối, Thống kê & Xác suất.
+    - Phân loại: Nhận biết, Thông hiểu, Vận dụng, Vận dụng cao.
+    
+    YÊU CẦU ĐỊNH DẠNG (JSON):
+    Trả về mảng JSON Array: [{"q": "Câu hỏi...", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "Hướng dẫn giải nhanh..."}]
+    
+    LƯU Ý QUAN TRỌNG:
+    1. Bọc công thức Toán trong dấu $. Dùng nháy đơn (') bên trong chuỗi, KHÔNG dùng nháy kép (").
+    2. Ở phần "exp", hãy giải thích logic ngắn gọn tại sao chọn đáp án đó.
+    3. CHỈ TRẢ VỀ JSON, không thêm chữ nào khác.
+    """
+    return safe_ai_generate(prompt, api_key)
+
+def parse_admin_exam_with_ai(raw_text, api_key):
+    """Tính năng 2: AI đọc đề Admin soạn, chuẩn hóa, tự tìm đáp án và viết hướng dẫn giải."""
+    prompt = f"""Dưới đây là nội dung đề thi trắc nghiệm Toán do giáo viên biên soạn.
+    NHIỆM VỤ CỦA BẠN: Đọc, chuẩn hóa lại định dạng Toán học, TỰ ĐỘNG TÌM ĐÁP ÁN ĐÚNG, và BIÊN SOẠN THÊM hướng dẫn giải ngắn gọn cho từng câu.
+    
+    YÊU CẦU ĐỊNH DẠNG (JSON): 
+    Trả về mảng JSON Array: [{{"q": "Câu hỏi...", "options": ["A.", "B.", "C.", "D."], "ans": "A", "exp": "Hướng dẫn giải nhanh..."}}]
+    
+    LƯU Ý QUAN TRỌNG: 
+    1. Bọc các công thức trong dấu $. Dùng nháy đơn (') bên trong chuỗi, KHÔNG dùng nháy kép (").
+    2. CHỈ TRẢ VỀ JSON.
+    
+    VĂN BẢN ĐỀ THI:
     {raw_text}
     """
     return safe_ai_generate(prompt, api_key)
 
 # ==========================================
 # 5. BỘ CÔNG CỤ VẼ HÌNH ĐỘNG SVG (VECTOR GRAPHICS)
-# Đã fix lỗi NameError và bổ sung đầy đủ các hình vẽ!
 # ==========================================
 def svg_bar_chart(cat1, val1, cat2, val2, cat3, val3, title="Biểu đồ Tần số"):
     max_v = max(val1, val2, val3, 1)
@@ -375,6 +400,20 @@ def svg_cone(r_val, l_val):
     </svg></div>
     """
 
+def svg_right_triangle(base_label, height_label, hyp_label, angle_label, obj_name="Máy bay"):
+    return f"""
+    <div style="display: flex; justify-content: center; margin: 15px 0;">
+    <svg width="220" height="160" viewBox="0 0 220 160" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="30,130 180,130 180,30" style="fill:#f8fafc;stroke:#334155;stroke-width:2" />
+        <polyline points="170,130 170,120 180,120" style="fill:none;stroke:#334155;stroke-width:1.5" />
+        <text x="90" y="148" font-family="Arial" font-size="14" font-weight="bold" fill="#0f172a">{base_label}</text>
+        <text x="188" y="85" font-family="Arial" font-size="14" font-weight="bold" fill="#0f172a">{height_label}</text>
+        <text x="80" y="70" font-family="Arial" font-size="14" font-weight="bold" fill="#0f172a" transform="rotate(-33 80 70)">{hyp_label}</text>
+        <text x="55" y="125" font-family="Arial" font-size="13" font-weight="bold" fill="#dc2626">{angle_label}</text>
+        <path d="M 60 130 A 30 30 0 0 0 50 115" fill="none" stroke="#dc2626" stroke-width="1.5"/>
+    </svg></div>
+    """
+
 def svg_box_of_balls(color1_name, color1_count, color2_name, color2_count):
     balls = ""
     c_map = {"xanh": "#2563eb", "đỏ": "#dc2626", "vàng": "#eab308", "trắng": "#f8fafc"}
@@ -399,25 +438,12 @@ def svg_box_of_balls(color1_name, color1_count, color2_name, color2_count):
     </svg></div>
     """
 
-# ĐÂY LÀ HÀM BỊ THIẾU Ở BẢN TRƯỚC ĐÃ ĐƯỢC THÊM VÀO!
-def svg_right_triangle(base_label, height_label, hyp_label, angle_label, obj_name="Máy bay"):
-    return f"""
-    <div style="display: flex; justify-content: center; margin: 15px 0;">
-    <svg width="220" height="160" viewBox="0 0 220 160" xmlns="http://www.w3.org/2000/svg">
-        <polygon points="30,130 180,130 180,30" style="fill:#f8fafc;stroke:#334155;stroke-width:2" />
-        <polyline points="170,130 170,120 180,120" style="fill:none;stroke:#334155;stroke-width:1.5" />
-        <text x="90" y="148" font-family="Arial" font-size="14" font-weight="bold" fill="#0f172a">{base_label}</text>
-        <text x="188" y="85" font-family="Arial" font-size="14" font-weight="bold" fill="#0f172a">{height_label}</text>
-        <text x="80" y="70" font-family="Arial" font-size="14" font-weight="bold" fill="#0f172a" transform="rotate(-33 80 70)">{hyp_label}</text>
-        <text x="55" y="125" font-family="Arial" font-size="13" font-weight="bold" fill="#dc2626">{angle_label}</text>
-        <path d="M 60 130 A 30 30 0 0 0 50 115" fill="none" stroke="#dc2626" stroke-width="1.5"/>
-    </svg></div>
-    """
-
 # ==========================================
-# 6. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE)
+# 6. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE) CHO LUYỆN TỰ DO
 # ==========================================
 def generate_algorithmic_practice():
+    questions = []
+    
     def make_opts(*args):
         opts = [f"${str(opt)}$" for opt in args]
         correct = opts[0]
@@ -426,14 +452,7 @@ def generate_algorithmic_practice():
         labels = ["A.", "B.", "C.", "D."]
         return [f"{labels[i]} {opts[i]}" for i in range(4)], labels[idx]
 
-    pool_1 = [] # Căn thức
-    pool_2 = [] # Hàm số
-    pool_3 = [] # Phương trình
-    pool_4 = [] # Bất phương trình
-    pool_5 = [] # Hệ thức lượng
-    pool_6 = [] # Đường tròn
-    pool_7 = [] # Hình khối
-    pool_8 = [] # Thống kê Xác suất
+    pool_1, pool_2, pool_3, pool_4, pool_5, pool_6, pool_7, pool_8 = [], [], [], [], [], [], [], []
 
     # --- POOL 1: CĂN THỨC ---
     a1 = random.randint(3, 9); b1 = random.randint(2, 5)
@@ -441,8 +460,8 @@ def generate_algorithmic_practice():
     pool_1.append({"q": f"Tính giá trị của biểu thức $P = \sqrt{{{a1**2}}} - \sqrt{{{(-b1)**2}}}$", "options": opt, "ans": ans, "exp": f"$P = {a1} - |- {b1}| = {a1} - {b1} = {a1-b1}$."})
     
     m2 = random.randint(2, 5); n2 = random.randint(1, 9)
-    opt, ans = make_opts(f"x \le \\frac{{{n2}}}{{{m2}}}", f"x \ge \\frac{{{n2}}}{{{m2}}}", f"x < \\frac{{{n2}}}{{{m2}}}", f"x > \\frac{{{n2}}}{{{m2}}}")
-    pool_1.append({"q": f"Biểu thức $\sqrt{{{n2} - {m2}x}}$ xác định khi và chỉ khi:", "options": opt, "ans": ans, "exp": f"${n2} - {m2}x \ge 0 \Leftrightarrow {m2}x \le {n2} \Leftrightarrow x \le \\frac{{{n2}}}{{{m2}}}$."})
+    opt, ans = make_opts(f"x \\le \\frac{{{n2}}}{{{m2}}}", f"x \\ge \\frac{{{n2}}}{{{m2}}}", f"x < \\frac{{{n2}}}{{{m2}}}", f"x > \\frac{{{n2}}}{{{m2}}}")
+    pool_1.append({"q": f"Biểu thức $\sqrt{{{n2} - {m2}x}}$ xác định khi và chỉ khi:", "options": opt, "ans": ans, "exp": f"${n2} - {m2}x \\ge 0 \Leftrightarrow {m2}x \\le {n2} \Leftrightarrow x \\le \\frac{{{n2}}}{{{m2}}}$."})
 
     k3 = random.choice([2, 3, 5, 7])
     opt, ans = make_opts(f"2\sqrt{{{k3}}}", f"\sqrt{{{k3}}}", f"\\frac{{2}}{{\sqrt{{{k3}}}}}", f"{k3}\sqrt{{{k3}}}")
@@ -480,8 +499,8 @@ def generate_algorithmic_practice():
     opt, ans = make_opts("-3", "3", "4", "-4")
     pool_2.append({"q": "Hệ số góc của đường thẳng $y = -3x + 4$ là:", "options": opt, "ans": ans, "exp": "Đường thẳng $y = ax + b$ có hệ số góc là $a$. Vậy hệ số góc là $-3$."})
 
-    opt, ans = make_opts("m = \pm 1", "m = 1", "m = -1", "m = 2")
-    pool_2.append({"q": "Hai đường thẳng $y = 2x + 1$ và $y = (m^2+1)x + 3$ song song với nhau khi:", "options": opt, "ans": ans, "exp": "Điều kiện song song: Hệ số góc bằng nhau $\Rightarrow m^2 + 1 = 2 \Leftrightarrow m^2 = 1 \Leftrightarrow m = \pm 1$."})
+    opt, ans = make_opts("m = \\pm 1", "m = 1", "m = -1", "m = 2")
+    pool_2.append({"q": "Hai đường thẳng $y = 2x + 1$ và $y = (m^2+1)x + 3$ song song với nhau khi:", "options": opt, "ans": ans, "exp": "Điều kiện song song: Hệ số góc bằng nhau $\Rightarrow m^2 + 1 = 2 \Leftrightarrow m^2 = 1 \Leftrightarrow m = \\pm 1$."})
 
     a_h7 = random.choice([2, 4])
     opt, ans = make_opts(a_h7*4, -a_h7*4, a_h7*2, -a_h7*2)
@@ -505,7 +524,7 @@ def generate_algorithmic_practice():
     pool_3.append({"q": f"Gọi $x_1, x_2$ là nghiệm của phương trình $x^2 {s_str} {p_str} = 0$. Giá trị của $x_1 \cdot x_2$ là:", "options": opt, "ans": ans, "exp": f"Theo hệ thức Vi-ét: $x_1 \cdot x_2 = \\frac{{c}}{{a}} = {P}$."})
 
     opt, ans = make_opts("4", "2", "0", "1")
-    pool_3.append({"q": "Số nghiệm của phương trình $x^4 - 5x^2 + 4 = 0$ là:", "options": opt, "ans": ans, "exp": "Đặt $t = x^2 \ge 0$, pt trở thành $t^2 - 5t + 4 = 0$. Có nghiệm $t=1$ và $t=4$. Từ đó suy ra $x = \pm 1$ và $x = \pm 2$. Vậy có 4 nghiệm."})
+    pool_3.append({"q": "Số nghiệm của phương trình $x^4 - 5x^2 + 4 = 0$ là:", "options": opt, "ans": ans, "exp": "Đặt $t = x^2 \\ge 0$, pt trở thành $t^2 - 5t + 4 = 0$. Có nghiệm $t=1$ và $t=4$. Từ đó suy ra $x = \\pm 1$ và $x = \\pm 2$. Vậy có 4 nghiệm."})
 
     opt, ans = make_opts("m = 4", "m = -4", "m = 2", "m = -2")
     pool_3.append({"q": "Điều kiện của tham số $m$ để phương trình $x^2 - 2x + m - 3 = 0$ có nghiệm kép là:", "options": opt, "ans": ans, "exp": "$\Delta' = (-1)^2 - 1(m-3) = 4 - m$. Để phương trình có nghiệm kép thì $\Delta' = 0 \Leftrightarrow m = 4$."})
@@ -518,17 +537,17 @@ def generate_algorithmic_practice():
     pool_3.append({"q": f"Số cặp số nguyên $(x; y)$ thỏa mãn phương trình $x y - 2x - y = {c_ng}$ là:", "options": opt, "ans": ans, "exp": f"Biến đổi pt thành $x(y-2) - (y-2) = {c_ng+2} \Leftrightarrow (x-1)(y-2) = {c_ng+2}$. Dựa vào số ước nguyên của ${c_ng+2}$ để tìm số cặp."})
 
     # --- POOL 4: BẤT PHƯƠNG TRÌNH ---
-    opt, ans = make_opts("x < 4", "x > 4", "x \ge 4", "x \le 4")
+    opt, ans = make_opts("x < 4", "x > 4", "x \\ge 4", "x \\le 4")
     pool_4.append({"q": "Tập nghiệm của bất phương trình $-3x + 12 > 0$ là:", "options": opt, "ans": ans, "exp": "$-3x > -12$. Chia hai vế cho số âm phải đổi chiều $\Rightarrow x < 4$."})
     
     opt, ans = make_opts("-2", "-1", "-3", "-4")
     pool_4.append({"q": "Nghiệm nguyên âm lớn nhất thỏa mãn bất phương trình $2x + 5 > 0$ là:", "options": opt, "ans": ans, "exp": "$2x > -5 \Leftrightarrow x > -2.5$. Số nguyên âm lớn nhất thỏa mãn là $-2$."})
     
-    opt, ans = make_opts("m > \\frac{5}{2}", "m < \\frac{5}{2}", "m \ge \\frac{5}{2}", "m \neq \\frac{5}{2}")
+    opt, ans = make_opts("m > \\frac{5}{2}", "m < \\frac{5}{2}", "m \\ge \\frac{5}{2}", "m \\neq \\frac{5}{2}")
     pool_4.append({"q": "Tìm tất cả các giá trị của tham số $m$ để hàm số $y = (5 - 2m)x + 1$ nghịch biến trên $\mathbb{R}$.", "options": opt, "ans": ans, "exp": "Hàm số nghịch biến khi hệ số góc $a < 0 \Leftrightarrow 5 - 2m < 0 \Leftrightarrow 2m > 5 \Leftrightarrow m > \\frac{5}{2}$."})
     
     opt, ans = make_opts("2", "1", "4", "0.5")
-    pool_4.append({"q": "Cho $x, y > 0$ thỏa mãn $x+y=2$. Giá trị nhỏ nhất của biểu thức $P = \\frac{1}{x} + \\frac{1}{y}$ là:", "options": opt, "ans": ans, "exp": "Áp dụng BĐT $\\frac{1}{x} + \\frac{1}{y} \ge \\frac{4}{x+y} = \\frac{4}{2} = 2$. Dấu = xảy ra khi $x=y=1$."})
+    pool_4.append({"q": "Cho $x, y > 0$ thỏa mãn $x+y=2$. Giá trị nhỏ nhất của biểu thức $P = \\frac{1}{x} + \\frac{1}{y}$ là:", "options": opt, "ans": ans, "exp": "Áp dụng BĐT $\\frac{1}{x} + \\frac{1}{y} \\ge \\frac{4}{x+y} = \\frac{4}{2} = 2$. Dấu = xảy ra khi $x=y=1$."})
 
     # --- POOL 5: HỆ THỨC LƯỢNG ---
     pool_5.append({"q": "Trong tam giác vuông, bình phương đường cao ứng với cạnh huyền bằng:", "options": ["A. Tích hai hình chiếu của hai cạnh góc vuông trên cạnh huyền", "B. Tích hai cạnh góc vuông", "C. Tích cạnh huyền và đường cao", "D. Tổng bình phương hai cạnh góc vuông"], "ans": "A", "exp": "Lý thuyết cơ bản: $h^2 = b' \cdot c'$."})
@@ -539,7 +558,7 @@ def generate_algorithmic_practice():
     b27 = random.randint(4, 15); g27 = random.choice([30, 45, 60]); h27 = round(b27 * math.tan(math.radians(g27)), 1)
     obj = random.choice(["tòa nhà", "cột cờ", "tháp hải đăng", "cái cây"])
     opt, ans = make_opts(f"{h27}m", f"{round(b27/math.tan(math.radians(g27)),1)}m", f"{round(b27*math.sin(math.radians(g27)),1)}m", f"{round(b27*math.cos(math.radians(g27)),1)}m")
-    pool_5.append({"q": f"Bóng của một {obj} trên mặt đất dài ${b27}m$. Tia sáng mặt trời tạo với mặt đất một góc ${g27}^\circ$. Chiều cao của {obj} xấp xỉ bằng:", "svg": svg_building("? m", f"{b27}m", f"{g27}°"), "options": opt, "ans": ans, "exp": f"Chiều cao = Bóng $\\times \\tan({g27}^\circ) = {b27} \\times \\tan({g27}^\circ) \approx {h27}m$."})
+    pool_5.append({"q": f"Bóng của một {obj} trên mặt đất dài ${b27}m$. Tia sáng mặt trời tạo với mặt đất một góc ${g27}^\circ$. Chiều cao của {obj} xấp xỉ bằng:", "svg": svg_building("? m", f"{b27}m", f"{g27}°"), "options": opt, "ans": ans, "exp": f"Chiều cao = Bóng $\\times \\tan({g27}^\circ) = {b27} \\times \\tan({g27}^\circ) \\approx {h27}m$."})
     
     l_bay = random.randint(4, 15); g_bay = random.choice([20, 25, 30]); h_bay = round(l_bay * math.sin(math.radians(g_bay)), 1)
     opt, ans = make_opts(f"{h_bay}km", f"{round(l_bay * math.cos(math.radians(g_bay)), 1)}km", f"{round(l_bay / math.sin(math.radians(g_bay)), 1)}km", f"{round(l_bay * math.tan(math.radians(g_bay)), 1)}km")
@@ -777,7 +796,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
             st.rerun()
 
 # ==========================================
-# 7. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH
+# 7. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH (CẬP NHẬT ADMIN AI)
 # ==========================================
 def main():
     st.set_page_config(page_title="LMS Lê Quý Đôn", layout="wide")
@@ -867,24 +886,56 @@ def main():
             if not api_key: st.error("❌ Hệ thống chưa cấu hình Gemini API Key.")
             else:
                 target_classes = ["Tất cả các lớp"] + all_cl if role == "core_admin" else [x.strip() for x in st.session_state.managed.split(',')]
-                with st.form("upload_pdf"):
-                    e_title = st.text_input("Tên bài kiểm tra:")
-                    e_class = st.selectbox("Giao bài cho lớp:", target_classes)
-                    e_time = st.number_input("Thời gian (Phút):", min_value=15, value=90, step=5)
-                    e_file = st.file_uploader("Tải Đề thi (PDF)", type="pdf")
-                    if st.form_submit_button("🚀 BIÊN TẬP & GIAO ĐỀ"):
-                        if e_title and e_file:
-                            with st.spinner("Đang biên tập đề, xin đợi..."):
-                                raw_txt = extract_text_from_pdf(e_file)
-                                exam_res = parse_exam_with_ai(raw_txt, api_key)
-                                if isinstance(exam_res, list):
-                                    conn = get_conn()
-                                    conn.execute("INSERT INTO mandatory_exams (title, questions_json, time_limit, target_class, created_by) VALUES (?,?,?,?,?)",
-                                                 (e_title, json.dumps(exam_res), e_time, e_class, st.session_state.current_user))
-                                    conn.commit(); conn.close()
-                                    st.success(f"✅ Đã giao {len(exam_res)} câu hỏi cho lớp {e_class}!")
-                                else: st.error(f"❌ {exam_res}")
-                        else: st.warning("Vui lòng điền Tên bài và tải File!")
+                
+                # CHIA TÍNH NĂNG ADMIN AI THÀNH 2 TAB RÕ RÀNG
+                t_ai, t_admin = st.tabs(["🤖 AI Tự Sinh Đề (Theo Ma Trận)", "📝 Admin Biên Soạn (AI Giải)"])
+                
+                with t_ai:
+                    with st.form("form_ai_gen"):
+                        st.info("Tính năng 1: Hệ thống gọi AI Gemini tự động sáng tác 40 câu hỏi chuẩn ma trận, bao gồm đáp án và hướng dẫn giải.")
+                        e_title_ai = st.text_input("Tên bài kiểm tra (AI):", value="Đề Kiểm Tra Toán (AI Tự Sinh)")
+                        e_class_ai = st.selectbox("Giao bài cho lớp:", target_classes, key="class_ai")
+                        e_time_ai = st.number_input("Thời gian (Phút):", min_value=15, value=90, step=5, key="time_ai")
+                        
+                        if st.form_submit_button("🚀 SINH ĐỀ AI & GIAO NGAY"):
+                            if e_title_ai:
+                                with st.spinner("🤖 AI đang vắt óc sáng tác 40 câu hỏi và giải chi tiết... Xin đợi (khoảng 10-20s)"):
+                                    exam_res = generate_ai_exam_for_admin(api_key)
+                                    if isinstance(exam_res, list):
+                                        conn = get_conn()
+                                        conn.execute("INSERT INTO mandatory_exams (title, questions_json, time_limit, target_class, created_by) VALUES (?,?,?,?,?)",
+                                                     (e_title_ai, json.dumps(exam_res), e_time_ai, e_class_ai, st.session_state.current_user))
+                                        conn.commit(); conn.close()
+                                        st.success(f"✅ Đã giao {len(exam_res)} câu hỏi cho lớp {e_class_ai}!")
+                                    else: st.error(f"❌ {exam_res}")
+                            else: st.warning("Vui lòng điền Tên bài!")
+                            
+                with t_admin:
+                    with st.form("form_admin_manual"):
+                        st.info("Tính năng 2: Giáo viên cung cấp 40 câu hỏi tự soạn. AI sẽ đọc, chuẩn hóa, tự tìm đáp án đúng và viết hướng dẫn giải cho từng câu.")
+                        e_title_man = st.text_input("Tên bài kiểm tra:", value="Đề Kiểm Tra Toán (GV Biên Soạn)")
+                        e_class_man = st.selectbox("Giao bài cho lớp:", target_classes, key="class_man")
+                        e_time_man = st.number_input("Thời gian (Phút):", min_value=15, value=90, step=5, key="time_man")
+                        
+                        e_text = st.text_area("Dán nội dung 40 câu hỏi bằng văn bản vào đây:", height=150)
+                        e_file = st.file_uploader("Hoặc tải file Đề thi định dạng PDF", type="pdf")
+                        
+                        if st.form_submit_button("🚀 AI GIẢI & GIAO ĐỀ"):
+                            if e_title_man and (e_text.strip() or e_file):
+                                with st.spinner("🤖 AI đang đọc đề, tìm đáp án và viết hướng dẫn giải..."):
+                                    raw_txt = e_text.strip()
+                                    if e_file:
+                                        raw_txt += "\n" + extract_text_from_pdf(e_file)
+                                    
+                                    exam_res = parse_admin_exam_with_ai(raw_txt, api_key)
+                                    if isinstance(exam_res, list):
+                                        conn = get_conn()
+                                        conn.execute("INSERT INTO mandatory_exams (title, questions_json, time_limit, target_class, created_by) VALUES (?,?,?,?,?)",
+                                                     (e_title_man, json.dumps(exam_res), e_time_man, e_class_man, st.session_state.current_user))
+                                        conn.commit(); conn.close()
+                                        st.success(f"✅ Đã biên tập và giao {len(exam_res)} câu hỏi cho lớp {e_class_man}!")
+                                    else: st.error(f"❌ {exam_res}")
+                            else: st.warning("Vui lòng nhập nội dung đề hoặc tải file PDF!")
 
         elif choice == "📊 Thống kê":
             st.header("📊 Thống kê")
