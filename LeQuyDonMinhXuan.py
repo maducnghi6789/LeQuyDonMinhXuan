@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V37 (A1 SUPREME - 40 DẠNG TOÁN ĐỘC LẬP & SVG CHUYÊN SÂU) ---
+# --- CẤU HÌNH HỆ THỐNG V37.1 (A1 SUPREME - FIX LỖI TYPO & CHUẨN HÓA LATEX) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -333,7 +333,8 @@ def svg_box_of_balls(color1_name, color1_count, color2_name, color2_count):
 def generate_algorithmic_practice():
     questions = []
     
-    def make_opts(*args):
+    def make_options(*args):
+        # Đã FIX TÊN HÀM thành make_options đồng nhất
         opts = [f"${str(opt)}$" for opt in args]
         correct = opts[0]
         random.shuffle(opts)
@@ -342,63 +343,56 @@ def generate_algorithmic_practice():
         return [f"{labels[i]} {opts[i]}" for i in range(4)], labels[idx]
 
     # --- CHƯƠNG 1: CĂN THỨC (6 DẠNG) ---
-    # 1. Khai phương hằng đẳng thức
     a1 = random.randint(3, 9); b1 = random.randint(2, 5)
-    q1_opts, q1_ans = make_opts(a1-b1, a1+b1, b1-a1, -a1-b1)
+    q1_opts, q1_ans = make_options(a1-b1, a1+b1, b1-a1, -a1-b1)
     questions.append({
         "q": f"Tính giá trị của biểu thức $P = \sqrt{{{a1**2}}} - \sqrt{{{(-b1)**2}}}$",
         "options": q1_opts, "ans": q1_ans, "exp": f"$P = {a1} - |- {b1}| = {a1} - {b1} = {a1-b1}$."
     })
     
-    # 2. Điều kiện xác định
     m2 = random.randint(2, 5); n2 = random.randint(1, 9)
-    q2_opts, q2_ans = make_opts(f"x \le \\frac{{{n2}}}{{{m2}}}", f"x \ge \\frac{{{n2}}}{{{m2}}}", f"x < \\frac{{{n2}}}{{{m2}}}", f"x > \\frac{{{n2}}}{{{m2}}}")
+    q2_opts, q2_ans = make_options(f"x \\le \\frac{{{n2}}}{{{m2}}}", f"x \\ge \\frac{{{n2}}}{{{m2}}}", f"x < \\frac{{{n2}}}{{{m2}}}", f"x > \\frac{{{n2}}}{{{m2}}}")
     questions.append({
         "q": f"Biểu thức $\sqrt{{{n2} - {m2}x}}$ xác định khi và chỉ khi:",
-        "options": q2_opts, "ans": q2_ans, "exp": f"${n2} - {m2}x \ge 0 \Leftrightarrow {m2}x \le {n2} \Leftrightarrow x \le \\frac{{{n2}}}{{{m2}}}$."
+        "options": q2_opts, "ans": q2_ans, "exp": f"${n2} - {m2}x \\ge 0 \Leftrightarrow {m2}x \\le {n2} \Leftrightarrow x \\le \\frac{{{n2}}}{{{m2}}}$."
     })
 
-    # 3. Trục căn thức ở mẫu
     k3 = random.choice([2, 3, 5, 7])
-    q3_opts, q3_ans = make_opts(f"2\sqrt{{{k3}}}", f"\sqrt{{{k3}}}", f"\\frac{{2}}{{\sqrt{{{k3}}}}}", f"{k3}\sqrt{{{k3}}}")
+    q3_opts, q3_ans = make_options(f"2\sqrt{{{k3}}}", f"\sqrt{{{k3}}}", f"\\frac{{2}}{{\sqrt{{{k3}}}}}", f"{k3}\sqrt{{{k3}}}")
     questions.append({
         "q": f"Kết quả của phép trục căn thức ở mẫu $\\frac{{{k3*2}}}{{\sqrt{{{k3}}}}}$ là:",
         "options": q3_opts, "ans": q3_ans, "exp": f"Nhân cả tử và mẫu với $\sqrt{{{k3}}}$ ta được $\\frac{{{k3*2}\sqrt{{{k3}}}}}{{{k3}}} = 2\sqrt{{{k3}}}$."
     })
 
-    # 4. So sánh biểu thức căn
     questions.append({
         "q": "Khẳng định nào sau đây là đúng?",
         "options": ["A. $\sqrt{16} \cdot \sqrt{9} = 12$", "B. $\sqrt{16 + 9} = 7$", "C. $\sqrt{16} + \sqrt{9} = 5$", "D. $\sqrt{16 - 9} = \sqrt{7}$"], 
         "ans": "A", "exp": "Ta có $\sqrt{16} \cdot \sqrt{9} = 4 \cdot 3 = 12$."
     })
 
-    # 5. Giải phương trình chứa căn
     p5 = random.randint(2, 6)
-    q5_opts, q5_ans = make_opts(f"\\frac{{{p5**2+1}}}{{2}}", f"\\frac{{{p5**2-1}}}{{2}}", f"{p5**2+1}", f"{p5**2-1}")
+    q5_opts, q5_ans = make_options(f"\\frac{{{p5**2+1}}}{{2}}", f"\\frac{{{p5**2-1}}}{{2}}", f"{p5**2+1}", f"{p5**2-1}")
     questions.append({
         "q": f"Phương trình $\sqrt{{2x - 1}} = {p5}$ có nghiệm là:",
         "options": q5_opts, "ans": q5_ans, "exp": f"Bình phương hai vế: $2x - 1 = {p5**2} \Leftrightarrow 2x = {p5**2+1} \Leftrightarrow x = \\frac{{{p5**2+1}}}{{2}}$."
     })
 
-    # 6. Rút gọn biểu thức chứa căn phức tạp
+    q6_opts, q6_ans = make_options("2\sqrt{5}-2", "2", "-2", "4\sqrt{5}")
     questions.append({
         "q": "Rút gọn biểu thức $M = \sqrt{(2-\sqrt{5})^2} + \sqrt{5}$",
-        "options": make_opts("2\sqrt{5}-2", "2", "-2", "4\sqrt{5}")[0], "ans": make_opts("2\sqrt{5}-2", "2", "-2", "4\sqrt{5}")[1],
+        "options": q6_opts, "ans": q6_ans,
         "exp": "Vì $2 < \sqrt{5}$ nên $\sqrt{(2-\sqrt{5})^2} = |2-\sqrt{5}| = \sqrt{5}-2$. Vậy $M = \sqrt{5}-2 + \sqrt{5} = 2\sqrt{5}-2$."
     })
 
     # --- CHƯƠNG 2: HÀM SỐ & ĐỒ THỊ (6 DẠNG) ---
-    # 7. Tính giá trị hàm số
     a7 = random.choice([-3, -2, 2, 3])
     x7 = random.randint(1, 3)
-    q7_opts, q7_ans = make_opts(a7*(x7**2), -a7*(x7**2), a7*x7, -a7*x7)
+    q7_opts, q7_ans = make_options(a7*(x7**2), -a7*(x7**2), a7*x7, -a7*x7)
     questions.append({
         "q": f"Biết điểm $A({x7}; y_0)$ thuộc đồ thị hàm số $y = {a7}x^2$. Giá trị của $y_0$ là:",
         "options": q7_opts, "ans": q7_ans, "exp": f"Thay $x = {x7}$ vào hàm số: $y_0 = {a7} \cdot ({x7})^2 = {a7*(x7**2)}$."
     })
 
-    # 8. Tính chất đồng nghịch biến hàm bậc 2
     is_up8 = "đồng biến" if a7 > 0 else "nghịch biến"
     questions.append({
         "q": f"Hàm số $y = {a7}x^2$ có tính chất nào sau đây?",
@@ -408,200 +402,207 @@ def generate_algorithmic_practice():
         "ans": "A", "exp": f"Vì hệ số $a = {a7}$, hàm số {is_up8} khi $x > 0$."
     })
 
-    # 9. Giao điểm Parabol và đường thẳng
+    q9_opts, q9_ans = make_options("1", "2", "0", "Vô số")
     questions.append({
         "q": f"Đồ thị hàm số $y = x^2$ và đường thẳng $y = -2x - 1$ có bao nhiêu điểm chung?",
-        "options": make_opts("1", "2", "0", "Vô số")[0], "ans": make_opts("1", "2", "0", "Vô số")[1],
+        "options": q9_opts, "ans": q9_ans,
         "exp": "Xét pt hoành độ giao điểm: $x^2 + 2x + 1 = 0 \Leftrightarrow (x+1)^2 = 0$. Pt có nghiệm kép nên có 1 điểm chung."
     })
 
-    # 10. Hàm số bậc nhất
     m10 = random.randint(2, 5)
+    q10_opts, q10_ans = make_options(m10-2, m10+2, 2-m10, 0)
     questions.append({
         "q": f"Đường thẳng $y = ({m10} - m)x + 3$ đi qua điểm $A(1; 5)$. Giá trị của $m$ là:",
-        "options": make_opts(m10-2, m10+2, 2-m10, 0)[0], "ans": make_opts(m10-2, m10+2, 2-m10, 0)[1],
+        "options": q10_opts, "ans": q10_ans,
         "exp": f"Thay $x=1, y=5$ vào phương trình: $5 = {m10} - m + 3 \Leftrightarrow m = {m10} + 3 - 5 = {m10-2}$."
     })
 
-    # 11. Hệ số góc
+    q11_opts, q11_ans = make_options("-3", "3", "4", "-4")
     questions.append({
         "q": "Hệ số góc của đường thẳng $y = -3x + 4$ là:",
-        "options": make_opts("-3", "3", "4", "-4")[0], "ans": make_opts("-3", "3", "4", "-4")[1],
+        "options": q11_opts, "ans": q11_ans,
         "exp": "Đường thẳng $y = ax + b$ có hệ số góc là $a$. Vậy hệ số góc là $-3$."
     })
 
-    # 12. Điều kiện song song
+    q12_opts, q12_ans = make_options("m = \\pm 1", "m = 1", "m = -1", "m = 2")
     questions.append({
         "q": "Hai đường thẳng $y = 2x + 1$ và $y = (m^2+1)x + 3$ song song với nhau khi:",
-        "options": make_options("m = \pm 1", "m = 1", "m = -1", "m = 2")[0], "ans": make_options("m = \pm 1", "m = 1", "m = -1", "m = 2")[1],
-        "exp": "Điều kiện song song: $m^2 + 1 = 2 \Leftrightarrow m^2 = 1 \Leftrightarrow m = \pm 1$."
+        "options": q12_opts, "ans": q12_ans,
+        "exp": "Điều kiện song song: $m^2 + 1 = 2 \Leftrightarrow m^2 = 1 \Leftrightarrow m = \\pm 1$."
     })
 
     # --- CHƯƠNG 3: PHƯƠNG TRÌNH & HỆ PHƯƠNG TRÌNH (8 DẠNG) ---
-    # 13. Hệ phương trình cơ bản
+    q13_opts, q13_ans = make_options("(3; 2)", "(2; 3)", "(1; -2)", "(-3; -2)")
     questions.append({
         "q": "Nghiệm của hệ phương trình $\\begin{cases} 2x - y = 4 \\\\ x + y = 5 \end{cases}$ là:",
-        "options": make_opts("(3; 2)", "(2; 3)", "(1; -2)", "(-3; -2)")[0], "ans": make_opts("(3; 2)", "(2; 3)", "(1; -2)", "(-3; -2)")[1],
+        "options": q13_opts, "ans": q13_ans,
         "exp": "Cộng vế theo vế ta được $3x = 9 \Rightarrow x = 3$. Thay vào pt (2) suy ra $y = 2$."
     })
 
-    # 14. Giải phương trình bậc 2
     c14 = random.randint(2, 6)
+    q14_opts, q14_ans = make_options(f"\\{{1; {c14}\\}}", f"\\{{-1; -{c14}\\}}", f"\\{{0; {c14}\\}}", f"\\{{1; -{c14}\\}}")
     questions.append({
         "q": f"Tập nghiệm của phương trình $x^2 - {(c14+1)}x + {c14} = 0$ là:",
-        "options": make_opts(f"\\{{1; {c14}\\}}", f"\\{{-1; -{c14}\\}}", f"\\{{0; {c14}\\}}", f"\\{{1; -{c14}\\}}")[0], 
-        "ans": make_opts(f"\\{{1; {c14}\\}}", f"\\{{-1; -{c14}\\}}", f"\\{{0; {c14}\\}}", f"\\{{1; -{c14}\\}}")[1],
+        "options": q14_opts, "ans": q14_ans,
         "exp": f"Nhận thấy $a+b+c = 1 - {(c14+1)} + {c14} = 0$. Phương trình có nghiệm $x_1 = 1, x_2 = {c14}$."
     })
 
-    # 15. Tổng Vi-et
     S15 = random.randint(3, 9); P15 = random.randint(-8, 8)
     s15_str = f"- {S15}x" if S15 > 0 else f"+ {-S15}x"
     p15_str = f"+ {P15}" if P15 > 0 else f"- {-P15}"
+    q15_opts, q15_ans = make_options(S15, -S15, P15, -P15)
     questions.append({
         "q": f"Gọi $x_1, x_2$ là nghiệm của phương trình $x^2 {s15_str} {p15_str} = 0$. Giá trị của biểu thức $x_1 + x_2$ là:",
-        "options": make_opts(S15, -S15, P15, -P15)[0], "ans": make_opts(S15, -S15, P15, -P15)[1],
+        "options": q15_opts, "ans": q15_ans,
         "exp": f"Theo hệ thức Vi-ét: $x_1 + x_2 = -\\frac{{b}}{{a}} = {S15}$."
     })
 
-    # 16. Tích Vi-et
+    q16_opts, q16_ans = make_options(P15, -P15, S15, -S15)
     questions.append({
         "q": f"Gọi $x_1, x_2$ là nghiệm của phương trình $x^2 {s15_str} {p15_str} = 0$. Giá trị của $x_1 \cdot x_2$ là:",
-        "options": make_opts(P15, -P15, S15, -S15)[0], "ans": make_opts(P15, -P15, S15, -S15)[1],
+        "options": q16_opts, "ans": q16_ans,
         "exp": f"Theo hệ thức Vi-ét: $x_1 \cdot x_2 = \\frac{{c}}{{a}} = {P15}$."
     })
 
-    # 17. Phương trình trùng phương
+    q17_opts, q17_ans = make_options("4", "2", "0", "1")
     questions.append({
         "q": "Số nghiệm của phương trình $x^4 - 5x^2 + 4 = 0$ là:",
-        "options": make_opts("4", "2", "0", "1")[0], "ans": make_opts("4", "2", "0", "1")[1],
-        "exp": "Đặt $t = x^2 \ge 0$, pt trở thành $t^2 - 5t + 4 = 0$. Có nghiệm $t=1$ và $t=4$. Từ đó suy ra $x = \pm 1$ và $x = \pm 2$. Vậy có 4 nghiệm."
+        "options": q17_opts, "ans": q17_ans,
+        "exp": "Đặt $t = x^2 \\ge 0$, pt trở thành $t^2 - 5t + 4 = 0$. Có nghiệm $t=1$ và $t=4$. Từ đó suy ra $x = \\pm 1$ và $x = \\pm 2$. Vậy có 4 nghiệm."
     })
 
-    # 18. Tham số m (nghiệm kép)
+    q18_opts, q18_ans = make_options("m = 4", "m = -4", "m = 2", "m = -2")
     questions.append({
         "q": "Điều kiện của tham số $m$ để phương trình $x^2 - 2x + m - 3 = 0$ có nghiệm kép là:",
-        "options": make_opts("m = 4", "m = -4", "m = 2", "m = -2")[0], "ans": make_opts("m = 4", "m = -4", "m = 2", "m = -2")[1],
+        "options": q18_opts, "ans": q18_ans,
         "exp": "$\Delta' = (-1)^2 - 1(m-3) = 4 - m$. Để phương trình có nghiệm kép thì $\Delta' = 0 \Leftrightarrow m = 4$."
     })
 
-    # 19. Biểu thức đối xứng (Khá)
+    q19_opts, q19_ans = make_options("7", "9", "11", "5")
     questions.append({
         "q": "Cho phương trình $x^2 - 3x + 1 = 0$ có hai nghiệm $x_1, x_2$. Giá trị của biểu thức $T = x_1^2 + x_2^2$ bằng:",
-        "options": make_opts("7", "9", "11", "5")[0], "ans": make_opts("7", "9", "11", "5")[1],
+        "options": q19_opts, "ans": q19_ans,
         "exp": "Theo Vi-ét: $S = 3, P = 1$. Ta có $T = (x_1+x_2)^2 - 2x_1x_2 = 3^2 - 2(1) = 7$."
     })
 
-    # 20. Phương trình nghiệm nguyên (Giỏi)
     c20 = random.randint(1, 5)
+    ans20 = "4" if c20+2 in [3,5,7] else "6"
+    q20_opts, q20_ans = make_options(ans20, "2", "8", "Vô số")
     questions.append({
         "q": f"Số cặp số nguyên $(x; y)$ thỏa mãn phương trình $x y - 2x - y = {c20}$ là:",
-        "options": make_opts("4" if c20+2 in [3,5,7] else "6", "2", "8", "Vô số")[0], 
-        "ans": make_opts("4" if c20+2 in [3,5,7] else "6", "2", "8", "Vô số")[1],
+        "options": q20_opts, "ans": q20_ans,
         "exp": f"Biến đổi pt thành $x(y-2) - (y-2) = {c20+2} \Leftrightarrow (x-1)(y-2) = {c20+2}$. Dựa vào số ước nguyên của ${c20+2}$ để tìm số cặp."
     })
 
     # --- CHƯƠNG 4: BẤT PHƯƠNG TRÌNH (4 DẠNG) ---
-    # 21. Cơ bản
+    q21_opts, q21_ans = make_options("x < 4", "x > 4", "x \\ge 4", "x \\le 4")
     questions.append({
         "q": "Tập nghiệm của bất phương trình $-3x + 12 > 0$ là:",
-        "options": make_opts("x < 4", "x > 4", "x \ge 4", "x \le 4")[0], "ans": make_opts("x < 4", "x > 4", "x \ge 4", "x \le 4")[1],
+        "options": q21_opts, "ans": q21_ans,
         "exp": "$-3x > -12$. Chia hai vế cho số âm phải đổi chiều $\Rightarrow x < 4$."
     })
-    # 22. Nghiệm nguyên
+    
+    q22_opts, q22_ans = make_options("-2", "-1", "-3", "-4")
     questions.append({
         "q": "Nghiệm nguyên âm lớn nhất thỏa mãn bất phương trình $2x + 5 > 0$ là:",
-        "options": make_opts("-2", "-1", "-3", "-4")[0], "ans": make_opts("-2", "-1", "-3", "-4")[1],
+        "options": q22_opts, "ans": q22_ans,
         "exp": "$2x > -5 \Leftrightarrow x > -2.5$. Số nguyên âm lớn nhất thỏa mãn là $-2$."
     })
-    # 23. BPT tham số hàm số
+    
+    q23_opts, q23_ans = make_options("m > \\frac{5}{2}", "m < \\frac{5}{2}", "m \\ge \\frac{5}{2}", "m \\neq \\frac{5}{2}")
     questions.append({
         "q": "Tìm tất cả các giá trị của tham số $m$ để hàm số $y = (5 - 2m)x + 1$ nghịch biến trên $\mathbb{R}$.",
-        "options": make_opts("m > \\frac{5}{2}", "m < \\frac{5}{2}", "m \ge \\frac{5}{2}", "m \neq \\frac{5}{2}")[0], 
-        "ans": make_opts("m > \\frac{5}{2}", "m < \\frac{5}{2}", "m \ge \\frac{5}{2}", "m \neq \\frac{5}{2}")[1],
+        "options": q23_opts, "ans": q23_ans,
         "exp": "Hàm số nghịch biến khi hệ số góc $a < 0 \Leftrightarrow 5 - 2m < 0 \Leftrightarrow 2m > 5 \Leftrightarrow m > \\frac{5}{2}$."
     })
-    # 24. Bất đẳng thức (Giỏi)
+    
+    q24_opts, q24_ans = make_options("2", "1", "4", "0.5")
     questions.append({
         "q": "Cho $x, y > 0$ thỏa mãn $x+y=2$. Giá trị nhỏ nhất của biểu thức $P = \\frac{1}{x} + \\frac{1}{y}$ là:",
-        "options": make_opts("2", "1", "4", "0.5")[0], "ans": make_opts("2", "1", "4", "0.5")[1],
-        "exp": "Áp dụng BĐT $\\frac{1}{x} + \\frac{1}{y} \ge \\frac{4}{x+y} = \\frac{4}{2} = 2$. Dấu = xảy ra khi $x=y=1$."
+        "options": q24_opts, "ans": q24_ans,
+        "exp": "Áp dụng BĐT $\\frac{1}{x} + \\frac{1}{y} \\ge \\frac{4}{x+y} = \\frac{4}{2} = 2$. Dấu = xảy ra khi $x=y=1$."
     })
 
-    # --- CHƯƠNG 5: HỆ THỨC LƯỢNG TRONG TAM GIÁC VUÔNG (5 DẠNG) ---
-    # 25. Lý thuyết Pytago
+    # --- CHƯƠNG 5: HỆ THỨC LƯỢNG (5 DẠNG) ---
     questions.append({
         "q": "Trong tam giác vuông, bình phương đường cao ứng với cạnh huyền bằng:",
         "options": ["A. Tích hai hình chiếu của hai cạnh góc vuông trên cạnh huyền", "B. Tích hai cạnh góc vuông", "C. Tích cạnh huyền và đường cao", "D. Tổng bình phương hai cạnh góc vuông"],
         "ans": "A", "exp": "Lý thuyết cơ bản: $h^2 = b' \cdot c'$."
     })
-    # 26. Rút gọn lượng giác
+    
+    q26_opts, q26_ans = make_options("1", "0", "0.5", "2")
     questions.append({
         "q": "Giá trị của biểu thức $T = \cos^2 25^\circ + \cos^2 65^\circ$ bằng:",
-        "options": make_opts("1", "0", "0.5", "2")[0], "ans": make_opts("1", "0", "0.5", "2")[1],
+        "options": q26_opts, "ans": q26_ans,
         "exp": "Vì hai góc phụ nhau nên $\cos 65^\circ = \sin 25^\circ$. Vậy $T = \cos^2 25^\circ + \sin^2 25^\circ = 1$."
     })
-    # 27. Bài toán thực tế: Tòa nhà (SVG)
+    
+    obj_names = ["tòa nhà", "cột cờ", "tháp hải đăng", "cái cây"]
+    obj = random.choice(obj_names)
     b27 = random.randint(4, 15); g27 = random.choice([30, 45, 60]); h27 = round(b27 * math.tan(math.radians(g27)), 1)
+    q27_opts, q27_ans = make_options(f"{h27}m", f"{round(b27/math.tan(math.radians(g27)),1)}m", f"{round(b27*math.sin(math.radians(g27)),1)}m", f"{round(b27*math.cos(math.radians(g27)),1)}m")
     questions.append({
-        "q": f"Bóng của một tòa nhà trên mặt đất dài ${b27}m$. Tia sáng mặt trời tạo với mặt đất một góc ${g27}^\circ$. Chiều cao của tòa nhà xấp xỉ bằng:",
+        "q": f"Bóng của một {obj} trên mặt đất dài ${b27}m$. Tia sáng mặt trời tạo với mặt đất một góc ${g27}^\circ$. Chiều cao của {obj} xấp xỉ bằng:",
         "svg": svg_building(h_val="? m", shadow_val=f"{b27}m", angle_val=f"{g27}°"),
-        "options": make_opts(f"{h27}m", f"{round(b27/math.tan(math.radians(g27)),1)}m", f"{round(b27*math.sin(math.radians(g27)),1)}m", f"{round(b27*math.cos(math.radians(g27)),1)}m")[0],
-        "ans": make_opts(f"{h27}m", f"{round(b27/math.tan(math.radians(g27)),1)}m", f"{round(b27*math.sin(math.radians(g27)),1)}m", f"{round(b27*math.cos(math.radians(g27)),1)}m")[1],
-        "exp": f"Chiều cao = Bóng $\\times \\tan({g27}^\circ) = {b27} \\times \\tan({g27}^\circ) \approx {h27}m$."
+        "options": q27_opts, "ans": q27_ans,
+        "exp": f"Chiều cao = Bóng $\\times \\tan({g27}^\circ) = {b27} \\times \\tan({g27}^\circ) \\approx {h27}m$."
     })
-    # 28. Bài toán thực tế: Cái thang (SVG)
+    
     h28 = random.choice([4, 6, 8])
+    q28_opts, q28_ans = make_options("60^\circ", "30^\circ", "45^\circ", "75^\circ")
     questions.append({
         "q": f"Một cái thang dài ${h28}m$ dựa vào tường. Biết chân thang cách tường ${int(h28/2)}m$. Góc tạo bởi thang và mặt đất là:",
         "svg": svg_ladder(ladder_val=f"{h28}m", dist_val=f"{int(h28/2)}m", angle_val="? °"),
-        "options": make_opts("60^\circ", "30^\circ", "45^\circ", "75^\circ")[0], "ans": make_opts("60^\circ", "30^\circ", "45^\circ", "75^\circ")[1],
+        "options": q28_opts, "ans": q28_ans,
         "exp": f"Gọi $\\alpha$ là góc tạo bởi thang và mặt đất. $\\cos \\alpha = \\frac{{\\text{{kề}}}}{{\\text{{huyền}}}} = \\frac{{{int(h28/2)}}}{{{h28}}} = \\frac{{1}}{{2}} \Rightarrow \\alpha = 60^\circ$."
     })
-    # 29. Tính đường cao
+    
     c29_1, c29_2, c29_h = random.choice([(3,4,5), (6,8,10)])
+    q29_opts, q29_ans = make_options(f"\\frac{{{c29_1*c29_2}}}{{{c29_h}}}", f"\\frac{{{c29_h}}}{{2}}", f"\\frac{{{c29_1+c29_2}}}{{2}}", f"{c29_1+c29_2}")
     questions.append({
         "q": f"Cho $\Delta ABC$ vuông tại $A$, có $AB = {c29_1}cm, AC = {c29_2}cm$. Độ dài đường cao $AH$ là:",
-        "options": make_opts(f"\\frac{{{c29_1*c29_2}}}{{{c29_h}}}", f"\\frac{{{c29_h}}}{{2}}", f"\\frac{{{c29_1+c29_2}}}{{2}}", f"{c29_1+c29_2}")[0],
-        "ans": make_opts(f"\\frac{{{c29_1*c29_2}}}{{{c29_h}}}", f"\\frac{{{c29_h}}}{{2}}", f"\\frac{{{c29_1+c29_2}}}{{2}}", f"{c29_1+c29_2}")[1],
+        "options": q29_opts, "ans": q29_ans,
         "exp": f"Cạnh huyền $BC = {c29_h}$. Dùng hệ thức $AH.BC = AB.AC \Rightarrow AH = \\frac{{{c29_1*c29_2}}}{{{c29_h}}}$."
     })
 
     # --- CHƯƠNG 6: ĐƯỜNG TRÒN (6 DẠNG) ---
-    # 30. Góc nội tiếp
+    q30_opts, q30_ans = make_options("90^\circ", "180^\circ", "60^\circ", "120^\circ")
     questions.append({
         "q": "Góc nội tiếp chắn nửa đường tròn có số đo là:",
-        "options": make_opts("90^\circ", "180^\circ", "60^\circ", "120^\circ")[0], "ans": make_opts("90^\circ", "180^\circ", "60^\circ", "120^\circ")[1],
+        "options": q30_opts, "ans": q30_ans,
         "exp": "Tính chất SGK: Góc nội tiếp chắn nửa đường tròn là góc vuông ($90^\circ$)."
     })
-    # 31. Góc ở tâm
+    
     g31 = random.randint(60, 120)
+    q31_opts, q31_ans = make_options(f"{g31}^\circ", f"{g31/2}^\circ", f"{180-g31}^\circ", f"{360-g31}^\circ")
     questions.append({
         "q": f"Cho đường tròn $(O)$, góc ở tâm $\widehat{{MON}} = {g31}^\circ$. Số đo cung nhỏ $MN$ là:",
-        "options": make_opts(f"{g31}^\circ", f"{g31/2}^\circ", f"{180-g31}^\circ", f"{360-g31}^\circ")[0], "ans": make_opts(f"{g31}^\circ", f"{g31/2}^\circ", f"{180-g31}^\circ", f"{360-g31}^\circ")[1],
+        "options": q31_opts, "ans": q31_ans,
         "exp": "Số đo cung nhỏ bằng đúng số đo góc ở tâm chắn cung đó."
     })
-    # 32. Tứ giác nội tiếp
+    
+    q32_opts, q32_ans = make_options("95^\circ", "85^\circ", "105^\circ", "15^\circ")
     questions.append({
         "q": "Tứ giác $ABCD$ nội tiếp đường tròn. Nếu góc $\widehat{A} = 85^\circ$ thì góc $\widehat{C}$ đối diện với nó bằng:",
-        "options": make_opts("95^\circ", "85^\circ", "105^\circ", "15^\circ")[0], "ans": make_opts("95^\circ", "85^\circ", "105^\circ", "15^\circ")[1],
+        "options": q32_opts, "ans": q32_ans,
         "exp": "Trong tứ giác nội tiếp, tổng hai góc đối bằng $180^\circ \Rightarrow \widehat{C} = 180^\circ - 85^\circ = 95^\circ$."
     })
-    # 33. Khoảng cách tâm đến dây
+    
     r33, d33 = random.choice([(5, 8), (10, 16), (13, 24)])
     h33 = int(math.sqrt(r33**2 - (d33/2)**2))
+    q33_opts, q33_ans = make_options(f"{h33}cm", f"{h33+1}cm", f"{h33-1}cm", f"{h33+2}cm")
     questions.append({
         "q": f"Cho đường tròn tâm $O$ bán kính ${r33}cm$ và dây cung $AB = {d33}cm$. Khoảng cách từ tâm $O$ đến dây $AB$ là:",
-        "options": make_opts(f"{h33}cm", f"{h33+1}cm", f"{h33-1}cm", f"{h33+2}cm")[0], "ans": make_opts(f"{h33}cm", f"{h33+1}cm", f"{h33-1}cm", f"{h33+2}cm")[1],
+        "options": q33_opts, "ans": q33_ans,
         "exp": f"Gọi $H$ là trung điểm $AB \Rightarrow AH = {int(d33/2)}cm$. Áp dụng Pytago cho $\Delta OAH$: $OH = \sqrt{{{r33}^2 - {int(d33/2)}^2}} = {h33}cm$."
     })
-    # 34. Tính chất hai tiếp tuyến cắt nhau
+    
     questions.append({
         "q": "Cho hai tiếp tuyến $AB$ và $AC$ cắt nhau tại $A$ (với $B, C$ là tiếp điểm). Khẳng định nào sau đây là ĐÚNG?",
         "options": ["A. $AB = AC$", "B. $AB \perp AC$", "C. $AB > AC$", "D. $AO \perp BC$ tại trọng tâm"], "ans": "A",
         "exp": "Theo tính chất hai tiếp tuyến cắt nhau, khoảng cách từ giao điểm đến hai tiếp điểm là bằng nhau."
     })
-    # 35. Quỹ tích (Giỏi)
+    
     questions.append({
         "q": "Cho đoạn thẳng $AB$ cố định. Quỹ tích các điểm $M$ nhìn đoạn $AB$ dưới một góc vuông là:",
         "options": ["A. Đường tròn đường kính AB", "B. Đường trung trực của AB", "C. Tia phân giác của góc vuông", "D. Đoạn thẳng AB"], "ans": "A",
@@ -609,25 +610,24 @@ def generate_algorithmic_practice():
     })
 
     # --- CHƯƠNG 7: HÌNH KHỐI (3 DẠNG CÓ SVG) ---
-    # 36. Hình trụ (Cylinder)
     r36 = random.randint(2, 4); h36 = random.randint(5, 8)
+    q36_opts, q36_ans = make_options(f"{2*r36*h36}\pi", f"{r36*h36}\pi", f"{r36**2 * h36}\pi", f"{4*r36*h36}\pi")
     questions.append({
         "q": f"Cho hình trụ có bán kính đáy $r = {r36}$ và chiều cao $h = {h36}$. Diện tích xung quanh của hình trụ là:",
         "svg": svg_cylinder(r_val=str(r36), h_val=str(h36)),
-        "options": make_opts(f"{2*r36*h36}\pi", f"{r36*h36}\pi", f"{r36**2 * h36}\pi", f"{4*r36*h36}\pi")[0],
-        "ans": make_opts(f"{2*r36*h36}\pi", f"{r36*h36}\pi", f"{r36**2 * h36}\pi", f"{4*r36*h36}\pi")[1],
+        "options": q36_opts, "ans": q36_ans,
         "exp": f"$S_{{xq}} = 2\pi r h = 2\pi({r36})({h36}) = {2*r36*h36}\pi$."
     })
-    # 37. Hình nón (Cone)
+    
     r37 = random.randint(3, 5); l37 = random.randint(6, 10)
+    q37_opts, q37_ans = make_options(f"{r37*l37}\pi", f"{r37**2 * l37}\pi", f"{2*r37*l37}\pi", f"{(r37*l37)/3}\pi")
     questions.append({
         "q": f"Một hình nón có bán kính đáy $r = {r37}cm$, đường sinh $l = {l37}cm$. Diện tích xung quanh của hình nón là:",
         "svg": svg_cone(r_val=str(r37), l_val=str(l37)),
-        "options": make_opts(f"{r37*l37}\pi", f"{r37**2 * l37}\pi", f"{2*r37*l37}\pi", f"{(r37*l37)/3}\pi")[0],
-        "ans": make_opts(f"{r37*l37}\pi", f"{r37**2 * l37}\pi", f"{2*r37*l37}\pi", f"{(r37*l37)/3}\pi")[1],
+        "options": q37_opts, "ans": q37_ans,
         "exp": f"Công thức $S_{{xq}} = \pi r l = \pi \cdot {r37} \cdot {l37} = {r37*l37}\pi$."
     })
-    # 38. Hình cầu
+    
     questions.append({
         "q": "Thể tích của một hình cầu có bán kính $R$ được tính bằng công thức nào?",
         "options": ["A. $V = \\frac{4}{3}\pi R^3$", "B. $V = 4\pi R^2$", "C. $V = \\frac{1}{3}\pi R^3$", "D. $V = \pi R^3$"], "ans": "A",
@@ -635,21 +635,20 @@ def generate_algorithmic_practice():
     })
 
     # --- CHƯƠNG 8: THỐNG KÊ XÁC SUẤT (2 DẠNG) ---
-    # 39. Bóng trong hộp (SVG)
     color1, color2 = random.choice([("xanh", "đỏ"), ("vàng", "trắng"), ("đỏ", "trắng")])
     w39 = random.randint(3, 7); l39 = random.randint(4, 8); tot39 = w39 + l39
+    q39_opts, q39_ans = make_options(f"\\frac{{{w39}}}{{{tot39}}}", f"\\frac{{{w39}}}{{{l39}}}", f"\\frac{{{l39}}}{{{tot39}}}", f"\\frac{{1}}{{{tot39}}}")
     questions.append({
         "q": f"Trong hộp có ${w39}$ quả bóng {color1} và ${l39}$ quả bóng {color2}. Lấy ngẫu nhiên 1 quả bóng. Xác suất lấy được bóng {color1} là:",
         "svg": svg_box_of_balls(color1, w39, color2, l39),
-        "options": make_opts(f"\\frac{{{w39}}}{{{tot39}}}", f"\\frac{{{w39}}}{{{l39}}}", f"\\frac{{{l39}}}{{{tot39}}}", f"\\frac{{1}}{{{tot39}}}")[0],
-        "ans": make_opts(f"\\frac{{{w39}}}{{{tot39}}}", f"\\frac{{{w39}}}{{{l39}}}", f"\\frac{{{l39}}}{{{tot39}}}", f"\\frac{{1}}{{{tot39}}}")[1],
+        "options": q39_opts, "ans": q39_ans,
         "exp": f"Xác suất = Tổng bóng {color1} / Tổng số bóng = $\\frac{{{w39}}}{{{tot39}}}$."
     })
-    # 40. Xúc xắc
+    
+    q40_opts, q40_ans = make_options("\\frac{1}{2}", "\\frac{1}{3}", "\\frac{1}{6}", "\\frac{2}{3}")
     questions.append({
         "q": "Gieo một con xúc xắc cân đối và đồng chất. Xác suất để xuất hiện mặt có số chấm là số nguyên tố bằng:",
-        "options": make_opts("\\frac{1}{2}", "\\frac{1}{3}", "\\frac{1}{6}", "\\frac{2}{3}")[0],
-        "ans": make_opts("\\frac{1}{2}", "\\frac{1}{3}", "\\frac{1}{6}", "\\frac{2}{3}")[1],
+        "options": q40_opts, "ans": q40_ans,
         "exp": "Số chấm là số nguyên tố thuộc tập $\{2; 3; 5\}$. Có 3 kết quả thuận lợi. Xác suất $P = \\frac{3}{6} = \\frac{1}{2}$."
     })
 
