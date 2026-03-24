@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V37.1 (A1 SUPREME - FIX LỖI TYPO & CHUẨN HÓA LATEX) ---
+# --- CẤU HÌNH HỆ THỐNG V38 (A1 SUPREME - HIỂN THỊ ĐÁP ÁN & HƯỚNG DẪN THÔNG MINH) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -110,7 +110,7 @@ def log_deletion(deleted_by, entity_type, entity_name, reason):
     except: pass
 
 # ==========================================
-# 3. QUẢN LÝ TÀI KHOẢN (GIỮ NGUYÊN)
+# 3. QUẢN LÝ TÀI KHOẢN
 # ==========================================
 def account_manager_ui(target_role, specific_class=None):
     st.markdown(f"#### 🛠️ Quản lý {target_role}")
@@ -328,13 +328,12 @@ def svg_box_of_balls(color1_name, color1_count, color2_name, color2_count):
     """
 
 # ==========================================
-# 6. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE, 40 DẠNG ĐỘC LẬP)
+# 5. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE, 40 DẠNG ĐỘC LẬP)
 # ==========================================
 def generate_algorithmic_practice():
     questions = []
     
     def make_options(*args):
-        # Đã FIX TÊN HÀM thành make_options đồng nhất
         opts = [f"${str(opt)}$" for opt in args]
         correct = opts[0]
         random.shuffle(opts)
@@ -694,8 +693,13 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
                     st.markdown(q['svg'], unsafe_allow_html=True)
                 formatted_choice = format_math(str(usr_choice)) if usr_choice else 'Không chọn'
                 st.markdown(f"**Bạn đã chọn:** {formatted_choice}")
-                if not is_correct: st.error("Câu trả lời chưa chính xác.")
-                st.info(f"**Hướng dẫn:**\n{format_math(q.get('exp', 'Đang cập nhật...'))}")
+                
+                # HIỂN THỊ ĐÁP ÁN & HƯỚNG DẪN TRONG MÀN HÌNH XEM LẠI
+                if not is_correct: 
+                    st.error("Câu trả lời chưa chính xác.")
+                    st.info(f"**Hướng dẫn nhanh:**\n{format_math(q.get('exp', 'Đang cập nhật...'))}")
+                else:
+                    st.success("Tuyệt vời! Bạn đã trả lời đúng.")
                 
         if st.button("⬅️ Trở về danh sách đề"):
             st.session_state.show_results = False
@@ -776,12 +780,37 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
                     st.rerun()
                 
     else:
-        st.success("🎉 **BẠN ĐÃ HOÀN THÀNH BÀI THI! Bấm nút bên dưới để trở về.**")
+        st.success("🎉 **BẠN ĐÃ HOÀN THÀNH BÀI THI!**")
         col1, col2 = st.columns(2)
         col1.metric("📌 TỔNG ĐIỂM", f"{st.session_state.score} / 10")
         col2.metric("🎯 SỐ CÂU ĐÚNG", f"{st.session_state.correct_count} / {len(questions)}")
         st.divider()
         
+        # TÍNH NĂNG MỚI: HIỂN THỊ ĐÚNG SAI VÀ GỢI Ý NGAY SAU KHI NỘP BÀI
+        st.markdown("### 📊 CHI TIẾT ĐÚNG/SAI & HƯỚNG DẪN")
+        for i, q in enumerate(questions):
+            correct_char = q['ans'].strip()[0].upper()
+            usr_choice = st.session_state.student_answers.get(i) or st.session_state.student_answers.get(str(i))
+            is_correct = False
+            if usr_choice and str(usr_choice).strip().upper().startswith(correct_char):
+                is_correct = True
+            
+            icon = "✅ ĐÚNG" if is_correct else "❌ SAI"
+            with st.expander(f"Câu {i+1}: {icon} | Đáp án chuẩn: {q['ans']}"):
+                render_exam_content(q['q'])
+                if 'svg' in q and q['svg']:
+                    st.markdown(q['svg'], unsafe_allow_html=True)
+                formatted_choice = format_math(str(usr_choice)) if usr_choice else 'Không chọn'
+                st.markdown(f"**Bạn đã chọn:** {formatted_choice}")
+                
+                # CHỈ HIỂN THỊ GỢI Ý CHO NHỮNG CÂU HỌC SINH LÀM SAI
+                if not is_correct:
+                    st.error("Câu trả lời chưa chính xác.")
+                    st.info(f"**Hướng dẫn nhanh:**\n{format_math(q.get('exp', 'Đang cập nhật...'))}")
+                else:
+                    st.success("Tuyệt vời! Bạn đã trả lời đúng.")
+
+        st.divider()
         if st.button("⬅️ Trở về danh sách đề"):
             st.session_state.show_results = False
             st.session_state.current_exam_id = None
