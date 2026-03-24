@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V41 (A1 SUPREME - TÍCH HỢP TÍNH NĂNG ADMIN AI KÉP) ---
+# --- CẤU HÌNH HỆ THỐNG V41.1 (A1 SUPREME - TÍCH HỢP TÍNH NĂNG ADMIN AI KÉP & FIX LỖI) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -110,7 +110,7 @@ def log_deletion(deleted_by, entity_type, entity_name, reason):
     except: pass
 
 # ==========================================
-# 3. QUẢN LÝ TÀI KHOẢN
+# 3. QUẢN LÝ TÀI KHOẢN VÀ LỚP HỌC
 # ==========================================
 def account_manager_ui(target_role, specific_class=None):
     st.markdown(f"#### 🛠️ Quản lý {target_role}")
@@ -199,6 +199,28 @@ def import_student_module():
                     u = gen_smart_username(n, existing)
                     conn.execute("INSERT INTO users (username, password, role, fullname, class_name) VALUES (?,?,?,?,?)", (u, "123@", "student", n, c))
                     conn.commit(); st.success(f"Đã tạo: {u} (MK: 123@)"); conn.close()
+
+# ĐÃ KHÔI PHỤC HÀM XÓA LỚP HỌC
+def delete_class_module(all_classes):
+    st.markdown("### 🚨 Xóa lớp học")
+    if not all_classes: return
+    sel_cl = st.selectbox("Chọn lớp xóa:", ["-- Chọn --"] + all_classes)
+    if sel_cl != "-- Chọn --":
+        reason = st.text_input("Lý do xóa:")
+        if st.button("XÁC NHẬN XÓA LỚP", type="primary") and reason:
+            conn = get_conn()
+            stus = [r[0] for r in conn.execute("SELECT username FROM users WHERE class_name=? AND role='student'", (sel_cl,)).fetchall()]
+            for u in stus: conn.execute("DELETE FROM mandatory_results WHERE username=?", (u,))
+            conn.execute("DELETE FROM users WHERE class_name=? AND role='student'", (sel_cl,))
+            subs = conn.execute("SELECT username, managed_classes FROM users WHERE role='sub_admin'").fetchall()
+            for sa, mng in subs:
+                if mng:
+                    new_mng = ", ".join([c.strip() for c in mng.split(',') if c.strip() != sel_cl])
+                else:
+                    new_mng = ""
+                conn.execute("UPDATE users SET managed_classes=? WHERE username=?", (new_mng, sa))
+            log_deletion(st.session_state.current_user, "Lớp học", sel_cl, reason)
+            conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
 # 4. MODULE AI ĐỌC & BIÊN SOẠN ĐỀ (ADMIN AI ENGINE)
@@ -439,7 +461,7 @@ def svg_box_of_balls(color1_name, color1_count, color2_name, color2_count):
     """
 
 # ==========================================
-# 6. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE) CHO LUYỆN TỰ DO
+# 6. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE CHO LUYỆN TỰ DO)
 # ==========================================
 def generate_algorithmic_practice():
     questions = []
@@ -460,8 +482,8 @@ def generate_algorithmic_practice():
     pool_1.append({"q": f"Tính giá trị của biểu thức $P = \sqrt{{{a1**2}}} - \sqrt{{{(-b1)**2}}}$", "options": opt, "ans": ans, "exp": f"$P = {a1} - |- {b1}| = {a1} - {b1} = {a1-b1}$."})
     
     m2 = random.randint(2, 5); n2 = random.randint(1, 9)
-    opt, ans = make_opts(f"x \\le \\frac{{{n2}}}{{{m2}}}", f"x \\ge \\frac{{{n2}}}{{{m2}}}", f"x < \\frac{{{n2}}}{{{m2}}}", f"x > \\frac{{{n2}}}{{{m2}}}")
-    pool_1.append({"q": f"Biểu thức $\sqrt{{{n2} - {m2}x}}$ xác định khi và chỉ khi:", "options": opt, "ans": ans, "exp": f"${n2} - {m2}x \\ge 0 \Leftrightarrow {m2}x \\le {n2} \Leftrightarrow x \\le \\frac{{{n2}}}{{{m2}}}$."})
+    opt, ans = make_opts(f"x \le \\frac{{{n2}}}{{{m2}}}", f"x \ge \\frac{{{n2}}}{{{m2}}}", f"x < \\frac{{{n2}}}{{{m2}}}", f"x > \\frac{{{n2}}}{{{m2}}}")
+    pool_1.append({"q": f"Biểu thức $\sqrt{{{n2} - {m2}x}}$ xác định khi và chỉ khi:", "options": opt, "ans": ans, "exp": f"${n2} - {m2}x \ge 0 \Leftrightarrow {m2}x \le {n2} \Leftrightarrow x \le \\frac{{{n2}}}{{{m2}}}$."})
 
     k3 = random.choice([2, 3, 5, 7])
     opt, ans = make_opts(f"2\sqrt{{{k3}}}", f"\sqrt{{{k3}}}", f"\\frac{{2}}{{\sqrt{{{k3}}}}}", f"{k3}\sqrt{{{k3}}}")
@@ -796,7 +818,7 @@ def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_an
             st.rerun()
 
 # ==========================================
-# 7. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH (CẬP NHẬT ADMIN AI)
+# 7. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH
 # ==========================================
 def main():
     st.set_page_config(page_title="LMS Lê Quý Đôn", layout="wide")
@@ -886,17 +908,13 @@ def main():
             if not api_key: st.error("❌ Hệ thống chưa cấu hình Gemini API Key.")
             else:
                 target_classes = ["Tất cả các lớp"] + all_cl if role == "core_admin" else [x.strip() for x in st.session_state.managed.split(',')]
-                
-                # CHIA TÍNH NĂNG ADMIN AI THÀNH 2 TAB RÕ RÀNG
                 t_ai, t_admin = st.tabs(["🤖 AI Tự Sinh Đề (Theo Ma Trận)", "📝 Admin Biên Soạn (AI Giải)"])
-                
                 with t_ai:
                     with st.form("form_ai_gen"):
                         st.info("Tính năng 1: Hệ thống gọi AI Gemini tự động sáng tác 40 câu hỏi chuẩn ma trận, bao gồm đáp án và hướng dẫn giải.")
                         e_title_ai = st.text_input("Tên bài kiểm tra (AI):", value="Đề Kiểm Tra Toán (AI Tự Sinh)")
                         e_class_ai = st.selectbox("Giao bài cho lớp:", target_classes, key="class_ai")
                         e_time_ai = st.number_input("Thời gian (Phút):", min_value=15, value=90, step=5, key="time_ai")
-                        
                         if st.form_submit_button("🚀 SINH ĐỀ AI & GIAO NGAY"):
                             if e_title_ai:
                                 with st.spinner("🤖 AI đang vắt óc sáng tác 40 câu hỏi và giải chi tiết... Xin đợi (khoảng 10-20s)"):
@@ -909,24 +927,20 @@ def main():
                                         st.success(f"✅ Đã giao {len(exam_res)} câu hỏi cho lớp {e_class_ai}!")
                                     else: st.error(f"❌ {exam_res}")
                             else: st.warning("Vui lòng điền Tên bài!")
-                            
                 with t_admin:
                     with st.form("form_admin_manual"):
                         st.info("Tính năng 2: Giáo viên cung cấp 40 câu hỏi tự soạn. AI sẽ đọc, chuẩn hóa, tự tìm đáp án đúng và viết hướng dẫn giải cho từng câu.")
                         e_title_man = st.text_input("Tên bài kiểm tra:", value="Đề Kiểm Tra Toán (GV Biên Soạn)")
                         e_class_man = st.selectbox("Giao bài cho lớp:", target_classes, key="class_man")
                         e_time_man = st.number_input("Thời gian (Phút):", min_value=15, value=90, step=5, key="time_man")
-                        
                         e_text = st.text_area("Dán nội dung 40 câu hỏi bằng văn bản vào đây:", height=150)
                         e_file = st.file_uploader("Hoặc tải file Đề thi định dạng PDF", type="pdf")
-                        
                         if st.form_submit_button("🚀 AI GIẢI & GIAO ĐỀ"):
                             if e_title_man and (e_text.strip() or e_file):
                                 with st.spinner("🤖 AI đang đọc đề, tìm đáp án và viết hướng dẫn giải..."):
                                     raw_txt = e_text.strip()
                                     if e_file:
                                         raw_txt += "\n" + extract_text_from_pdf(e_file)
-                                    
                                     exam_res = parse_admin_exam_with_ai(raw_txt, api_key)
                                     if isinstance(exam_res, list):
                                         conn = get_conn()
