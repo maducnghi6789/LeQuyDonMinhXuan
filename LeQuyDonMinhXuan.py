@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V43 (A1 SUPREME - BẢN KIM CƯƠNG FIX TOÀN BỘ LỖI) ---
+# --- CẤU HÌNH HỆ THỐNG V44 (A1 SUPREME - BẢN KIM CƯƠNG HOÀN THIỆN LÕI) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -42,6 +42,8 @@ def gen_smart_username(fullname, existing_usernames):
 
 def clean_ai_json(json_str):
     res = json_str.strip()
+    res = re.sub(r'```json', '', res, flags=re.IGNORECASE)
+    res = re.sub(r'```', '', res)
     start_idx = res.find('[')
     end_idx = res.rfind(']')
     if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
@@ -56,7 +58,7 @@ def format_math(text):
     text = re.sub(bt + r'(.*?)' + bt, r'$\1$', text)
     text = text.replace('TEX_', '\\')
     text = text.replace('\\\\', '\\')
-    # Sửa lỗi ngoặc nhọn kép do AI sinh ra (Ví dụ: {{5}} -> {5})
+    # Chống ảo giác nhân đôi ngoặc nhọn của AI
     text = text.replace('{{', '{').replace('}}', '}')
     return text
 
@@ -67,12 +69,12 @@ def get_api_key():
     return res[0] if res else ""
 
 # ==========================================
-# 2. HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU
+# 2. HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU (FIX LỖI CÚ PHÁP TRIPLE QUOTES)
 # ==========================================
 def init_db():
     conn = get_conn()
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY)''')
+    c.execute("CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY)")
     user_cols = [("password", "TEXT"), ("role", "TEXT"), ("fullname", "TEXT"), ("dob", "TEXT"), ("class_name", "TEXT"), ("school", "TEXT"), ("managed_classes", "TEXT")]
     c.execute("PRAGMA table_info(users)")
     existing_u_cols = [row[1] for row in c.fetchall()]
@@ -81,17 +83,18 @@ def init_db():
             try: c.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
             except: pass
             
-    c.execute('''CREATE TABLE IF NOT EXISTS system_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS mandatory_exams (id INTEGER PRIMARY KEY AUTOINCREMENT)''')
-    exam_cols = [("title", "TEXT"), ("questions_json", "TEXT"), ("time_limit", "INTEGER"), ("target_class", "TEXT"), ("created_by", "TEXT"), ("timestamp", "DATETIME DEFAULT CURRENT_TIMESTAMP")]
+    c.execute("CREATE TABLE IF NOT EXISTS system_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS mandatory_exams (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, questions_json TEXT, time_limit INTEGER, target_class TEXT, created_by TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
+    
     c.execute("PRAGMA table_info(mandatory_exams)")
     existing_e_cols = [row[1] for row in c.fetchall()]
+    exam_cols = [("title", "TEXT"), ("questions_json", "TEXT"), ("time_limit", "INTEGER"), ("target_class", "TEXT"), ("created_by", "TEXT"), ("timestamp", "DATETIME DEFAULT CURRENT_TIMESTAMP")]
     for col_name, col_type in exam_cols:
         if col_name not in existing_e_cols:
             try: c.execute(f"ALTER TABLE mandatory_exams ADD COLUMN {col_name} {col_type}")
             except: pass
 
-    c.execute('''CREATE TABLE IF NOT EXISTS mandatory_results (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, exam_id INTEGER, score REAL, user_answers_json TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+    c.execute("CREATE TABLE IF NOT EXISTS mandatory_results (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, exam_id INTEGER, score REAL, user_answers_json TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
     
     admin_exists = conn.execute("SELECT 1 FROM users WHERE username=?", (ADMIN_CORE_EMAIL,)).fetchone()
     if not admin_exists:
@@ -132,7 +135,7 @@ def account_manager_ui(target_role, specific_class=None):
         with pd.ExcelWriter(out, engine='openpyxl') as w:
             rename_cols = {'username': 'Tài khoản', 'fullname': 'Họ và tên', 'password': 'Mật khẩu', 'class_name': 'Lớp'}
             df[cols].rename(columns=rename_cols).to_excel(w, index=False)
-        st.download_button("⬇️ XUẤT DANH SÁCH", data=out.getvalue(), file_name=f"Danh_sach_{target_role}_{datetime.now(VN_TZ).strftime('%Y%m%d')}.xlsx")
+        st.download_button("⬇️ XUẤT DANH SÁCH (EXCEL)", data=out.getvalue(), file_name=f"Danh_sach_{target_role}_{datetime.now(VN_TZ).strftime('%Y%m%d')}.xlsx")
         st.divider()
         sel_u = st.selectbox(f"Chọn {target_role} để chỉnh sửa:", ["-- Chọn --"] + df['username'].tolist())
         if sel_u != "-- Chọn --":
@@ -224,7 +227,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI ĐỌC & BIÊN SOẠN ĐỀ (ADMIN AI ENGINE VỚI ÉP KIỂU JSON)
+# 4. MODULE AI ĐỌC & BIÊN SOẠN ĐỀ (ADMIN AI ENGINE)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -234,7 +237,6 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key_string):
-    """Lõi AI: Ép kiểu dữ liệu trả về chuẩn JSON (response_mime_type) chống sập lỗi format"""
     if not api_key_string or not api_key_string.strip(): return "LỖI: Chưa nhập API Key."
     keys = [k.strip() for k in api_key_string.split(',') if k.strip()]
     random.shuffle(keys)
@@ -244,14 +246,10 @@ def safe_ai_generate(prompt, api_key_string):
             genai.configure(api_key=current_key)
             try:
                 model = genai.GenerativeModel('gemini-1.5-flash')
-                response = model.generate_content(
-                    prompt, 
-                    generation_config=genai.types.GenerationConfig(
-                        temperature=0.8, # Tăng sáng tạo để không bị lặp câu hỏi
-                        response_mime_type="application/json" # CHỐT ÉP KIỂU JSON CHỐNG LỖI CÚ PHÁP
-                    )
-                )
-                parsed_json = json.loads(response.text)
+                response = model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=0.4))
+                raw_response = response.text.replace('TEX_', '\\')
+                cleaned_text = clean_ai_json(raw_response)
+                parsed_json = json.loads(cleaned_text)
                 if isinstance(parsed_json, list) and len(parsed_json) > 0: return parsed_json
             except Exception as e:
                 err_msg = str(e).lower()
@@ -261,21 +259,21 @@ def safe_ai_generate(prompt, api_key_string):
                 else: continue
         if "429" in last_err or "quota" in last_err: time.sleep(5)
         else: break
-    return f"LỖI TẠO ĐỀ: Hệ thống AI đang bận hoặc API Key không hợp lệ. Vui lòng thử lại sau 1 phút."
+    return f"LỖI TẠO ĐỀ: {last_err}. AI bị nghẽn hoặc sai định dạng."
 
 def generate_ai_exam_for_admin(api_key):
-    prompt = """Hãy đóng vai là một chuyên gia ra đề thi Toán vào lớp 10.
-    YÊU CẦU TỐI THƯỢNG: TẠO MỘT ĐỀ THI GỒM ĐÚNG 40 CÂU KHÁC NHAU HOÀN TOÀN VỀ DẠNG BÀI. TUYỆT ĐỐI KHÔNG ĐƯỢC LẶP LẠI DẠNG BÀI (Ví dụ: Không ra 2 câu cùng tính khoảng cách tâm đến dây cung). Phải phủ sóng đầy đủ 40 kiến thức riêng biệt.
+    prompt = """Hãy đóng vai là một chuyên gia ra đề thi Toán.
+    YÊU CẦU: TẠO MỘT ĐỀ THI GỒM ĐÚNG 40 CÂU KHÁC NHAU. KHÔNG ĐƯỢC LẶP LẠI DẠNG BÀI.
     MA TRẬN: Căn thức, Hàm số y=ax^2, PT & Hệ PT, Bất PT, Hệ thức lượng, Đường tròn, Hình khối, Thống kê & Xác suất.
     ĐỊNH DẠNG JSON BẮT BUỘC: [{"q": "...", "options": ["A. $...$", "B. $...$", "C. $...$", "D. $...$"], "ans": "A", "exp": "Giải nhanh..."}]
-    LƯU Ý: Bọc công thức Toán trong dấu $. KHÔNG dùng ngoặc nhọn kép {{ }}. Chỉ dùng { } cho phân số.
+    LƯU Ý: Bọc công thức Toán trong dấu $. KHÔNG dùng ngoặc nhọn kép {{ }}. Chỉ xuất JSON sạch, không kèm markdown.
     """
     return safe_ai_generate(prompt, api_key)
 
 def parse_admin_exam_with_ai(raw_text, api_key):
     prompt = f"""Đọc đề thi Toán dưới đây. CHUẨN HÓA TOÁN HỌC, TÌM ĐÁP ÁN ĐÚNG và VIẾT HƯỚNG DẪN GIẢI ngắn gọn.
-    YÊU CẦU ĐỊNH DẠNG (JSON): [{{"q": "...", "options": ["A. $...$", "B. $...$", "C. $...$", "D. $...$"], "ans": "A", "exp": "Giải nhanh..."}}]
-    LƯU Ý: Bọc các công thức trong dấu $. Dùng nháy đơn (') bên trong chuỗi. KHÔNG dùng ngoặc nhọn kép {{ }}.
+    YÊU CẦU ĐỊNH DẠNG JSON BẮT BUỘC: [{{"q": "...", "options": ["A. $...$", "B. $...$", "C. $...$", "D. $...$"], "ans": "A", "exp": "Giải nhanh..."}}]
+    LƯU Ý: Bọc các công thức trong dấu $. KHÔNG dùng ngoặc nhọn kép {{ }}. Chỉ xuất JSON sạch, không kèm markdown.
     VĂN BẢN ĐỀ THI: {raw_text}
     """
     return safe_ai_generate(prompt, api_key)
@@ -449,13 +447,12 @@ def svg_box_of_balls(color1_name, color1_count, color2_name, color2_count):
     """
 
 # ==========================================
-# 6. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE CHO LUYỆN TỰ DO)
+# 6. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE)
 # ==========================================
 def generate_algorithmic_practice():
     questions = []
     
     def make_opts(*args):
-        # ÉP BỌC DẤU $ CHO TOÀN BỘ ĐÁP ÁN ĐỂ RENDER CHUẨN LATEX QUA ST.RADIO
         opts = [f"${str(opt)}$" for opt in args]
         correct = opts[0]
         random.shuffle(opts)
@@ -510,5 +507,512 @@ def generate_algorithmic_practice():
     opt, ans = make_opts("-3", "3", "4", "-4")
     pool_2.append({"q": "Hệ số góc của đường thẳng $y = -3x + 4$ là:", "options": opt, "ans": ans, "exp": "Đường thẳng $y = ax + b$ có hệ số góc là $a$. Vậy hệ số góc là $-3$."})
 
-    opt, ans = make_opts("m = \\pm 1", "m = 1", "m = -1", "m = 2")
-    pool_2.append({"q": "Hai đường thẳng $y = 2x + 1$ và $y = (m^2+1)x + 3$ song song với nhau khi:", "options": opt
+    opt, ans = make_opts("m = \pm 1", "m = 1", "m = -1", "m = 2")
+    pool_2.append({"q": "Hai đường thẳng $y = 2x + 1$ và $y = (m^2+1)x + 3$ song song với nhau khi:", "options": opt, "ans": ans, "exp": "Điều kiện song song: Hệ số góc bằng nhau $\Rightarrow m^2 + 1 = 2 \Leftrightarrow m^2 = 1 \Leftrightarrow m = \pm 1$."})
+
+    a_h7 = random.choice([2, 4])
+    opt, ans = make_opts(a_h7*4, -a_h7*4, a_h7*2, -a_h7*2)
+    pool_2.append({"q": f"Giá trị của hàm số $y = {a_h7}x^2$ tại $x = -2$ là:", "options": opt, "ans": ans, "exp": f"Thay $x = -2 \Rightarrow y = {a_h7} \cdot (-2)^2 = {a_h7*4}$."})
+
+    # --- POOL 3: PHƯƠNG TRÌNH & HỆ PHƯƠNG TRÌNH ---
+    opt, ans = make_opts("(3; 2)", "(2; 3)", "(1; -2)", "(-3; -2)")
+    pool_3.append({"q": "Nghiệm của hệ phương trình $\\begin{cases} 2x - y = 4 \\\\ x + y = 5 \end{cases}$ là:", "options": opt, "ans": ans, "exp": "Cộng vế theo vế ta được $3x = 9 \Rightarrow x = 3$. Thay vào pt (2) suy ra $y = 2$."})
+
+    c_pt = random.randint(2, 6)
+    opt, ans = make_opts(f"\\{{1; {c_pt}\\}}", f"\\{{-1; -{c_pt}\\}}", f"\\{{0; {c_pt}\\}}", f"\\{{1; -{c_pt}\\}}")
+    pool_3.append({"q": f"Tập nghiệm của phương trình $x^2 - {(c_pt+1)}x + {c_pt} = 0$ là:", "options": opt, "ans": ans, "exp": f"Nhận thấy $a+b+c = 1 - {(c_pt+1)} + {c_pt} = 0$. Phương trình có nghiệm $x_1 = 1, x_2 = {c_pt}$."})
+
+    S = random.randint(3, 9); P = random.randint(-8, 8)
+    s_str = f"- {S}x" if S > 0 else f"+ {-S}x"
+    p_str = f"+ {P}" if P > 0 else f"- {-P}"
+    opt, ans = make_opts(S, -S, P, -P)
+    pool_3.append({"q": f"Gọi $x_1, x_2$ là nghiệm của phương trình $x^2 {s_str} {p_str} = 0$. Giá trị của biểu thức $x_1 + x_2$ là:", "options": opt, "ans": ans, "exp": f"Theo hệ thức Vi-ét: $x_1 + x_2 = -\\frac{{b}}{{a}} = {S}$."})
+
+    opt, ans = make_opts(P, -P, S, -S)
+    pool_3.append({"q": f"Gọi $x_1, x_2$ là nghiệm của phương trình $x^2 {s_str} {p_str} = 0$. Giá trị của $x_1 \cdot x_2$ là:", "options": opt, "ans": ans, "exp": f"Theo hệ thức Vi-ét: $x_1 \cdot x_2 = \\frac{{c}}{{a}} = {P}$."})
+
+    opt, ans = make_opts("4", "2", "0", "1")
+    pool_3.append({"q": "Số nghiệm của phương trình $x^4 - 5x^2 + 4 = 0$ là:", "options": opt, "ans": ans, "exp": "Đặt $t = x^2 \ge 0$, pt trở thành $t^2 - 5t + 4 = 0$. Có nghiệm $t=1$ và $t=4$. Từ đó suy ra $x = \pm 1$ và $x = \pm 2$. Vậy có 4 nghiệm."})
+
+    opt, ans = make_opts("m = 4", "m = -4", "m = 2", "m = -2")
+    pool_3.append({"q": "Điều kiện của tham số $m$ để phương trình $x^2 - 2x + m - 3 = 0$ có nghiệm kép là:", "options": opt, "ans": ans, "exp": "$\Delta' = (-1)^2 - 1(m-3) = 4 - m$. Để phương trình có nghiệm kép thì $\Delta' = 0 \Leftrightarrow m = 4$."})
+
+    opt, ans = make_opts("7", "9", "11", "5")
+    pool_3.append({"q": "Cho phương trình $x^2 - 3x + 1 = 0$ có hai nghiệm $x_1, x_2$. Giá trị của biểu thức $T = x_1^2 + x_2^2$ bằng:", "options": opt, "ans": ans, "exp": "Theo Vi-ét: $S = 3, P = 1$. Ta có $T = (x_1+x_2)^2 - 2x_1x_2 = 3^2 - 2(1) = 7$."})
+
+    c_ng = random.randint(1, 5); ans_ng = "4" if c_ng+2 in [3,5,7] else "6"
+    opt, ans = make_opts(ans_ng, "2", "8", "Vô số")
+    pool_3.append({"q": f"Số cặp số nguyên $(x; y)$ thỏa mãn phương trình $x y - 2x - y = {c_ng}$ là:", "options": opt, "ans": ans, "exp": f"Biến đổi pt thành $x(y-2) - (y-2) = {c_ng+2} \Leftrightarrow (x-1)(y-2) = {c_ng+2}$. Dựa vào số ước nguyên của ${c_ng+2}$ để tìm số cặp."})
+
+    # --- POOL 4: BẤT PHƯƠNG TRÌNH ---
+    opt, ans = make_opts("x < 4", "x > 4", "x \ge 4", "x \le 4")
+    pool_4.append({"q": "Tập nghiệm của bất phương trình $-3x + 12 > 0$ là:", "options": opt, "ans": ans, "exp": "$-3x > -12$. Chia hai vế cho số âm phải đổi chiều $\Rightarrow x < 4$."})
+    
+    opt, ans = make_opts("-2", "-1", "-3", "-4")
+    pool_4.append({"q": "Nghiệm nguyên âm lớn nhất thỏa mãn bất phương trình $2x + 5 > 0$ là:", "options": opt, "ans": ans, "exp": "$2x > -5 \Leftrightarrow x > -2.5$. Số nguyên âm lớn nhất thỏa mãn là $-2$."})
+    
+    opt, ans = make_opts("m > \\frac{5}{2}", "m < \\frac{5}{2}", "m \ge \\frac{5}{2}", "m \neq \\frac{5}{2}")
+    pool_4.append({"q": "Tìm tất cả các giá trị của tham số $m$ để hàm số $y = (5 - 2m)x + 1$ nghịch biến trên $\mathbb{R}$.", "options": opt, "ans": ans, "exp": "Hàm số nghịch biến khi hệ số góc $a < 0 \Leftrightarrow 5 - 2m < 0 \Leftrightarrow 2m > 5 \Leftrightarrow m > \\frac{5}{2}$."})
+    
+    opt, ans = make_opts("2", "1", "4", "0.5")
+    pool_4.append({"q": "Cho $x, y > 0$ thỏa mãn $x+y=2$. Giá trị nhỏ nhất của biểu thức $P = \\frac{1}{x} + \\frac{1}{y}$ là:", "options": opt, "ans": ans, "exp": "Áp dụng BĐT $\\frac{1}{x} + \\frac{1}{y} \ge \\frac{4}{x+y} = \\frac{4}{2} = 2$. Dấu = xảy ra khi $x=y=1$."})
+
+    # --- POOL 5: HỆ THỨC LƯỢNG ---
+    pool_5.append({"q": "Trong tam giác vuông, bình phương đường cao ứng với cạnh huyền bằng:", "options": ["A. Tích hai hình chiếu của hai cạnh góc vuông trên cạnh huyền", "B. Tích hai cạnh góc vuông", "C. Tích cạnh huyền và đường cao", "D. Tổng bình phương hai cạnh góc vuông"], "ans": "A", "exp": "Lý thuyết cơ bản: $h^2 = b' \cdot c'$."})
+    
+    opt, ans = make_opts("1", "0", "0.5", "2")
+    pool_5.append({"q": "Giá trị của biểu thức $T = \cos^2 25^\circ + \cos^2 65^\circ$ bằng:", "options": opt, "ans": ans, "exp": "Vì hai góc phụ nhau nên $\cos 65^\circ = \sin 25^\circ$. Vậy $T = \cos^2 25^\circ + \sin^2 25^\circ = 1$."})
+    
+    b27 = random.randint(4, 15); g27 = random.choice([30, 45, 60]); h27 = round(b27 * math.tan(math.radians(g27)), 1)
+    obj = random.choice(["tòa nhà", "cột cờ", "tháp hải đăng", "cái cây"])
+    opt, ans = make_opts(f"{h27}m", f"{round(b27/math.tan(math.radians(g27)),1)}m", f"{round(b27*math.sin(math.radians(g27)),1)}m", f"{round(b27*math.cos(math.radians(g27)),1)}m")
+    pool_5.append({"q": f"Bóng của một {obj} trên mặt đất dài ${b27}m$. Tia sáng mặt trời tạo với mặt đất một góc ${g27}^\circ$. Chiều cao của {obj} xấp xỉ bằng:", "svg": svg_building("? m", f"{b27}m", f"{g27}°"), "options": opt, "ans": ans, "exp": f"Chiều cao = Bóng $\\times \\tan({g27}^\circ) = {b27} \\times \\tan({g27}^\circ) \approx {h27}m$."})
+    
+    l_bay = random.randint(4, 15); g_bay = random.choice([20, 25, 30]); h_bay = round(l_bay * math.sin(math.radians(g_bay)), 1)
+    opt, ans = make_opts(f"{h_bay}km", f"{round(l_bay * math.cos(math.radians(g_bay)), 1)}km", f"{round(l_bay / math.sin(math.radians(g_bay)), 1)}km", f"{round(l_bay * math.tan(math.radians(g_bay)), 1)}km")
+    pool_5.append({"q": f"Một chiếc máy bay cất cánh theo đường thẳng tạo với mặt đất góc ${g_bay}^\circ$. Sau khi bay được ${l_bay}km$, máy bay đang ở độ cao bao nhiêu km?", "svg": svg_right_triangle("Mặt đất", "? km", f"{l_bay}km", f"{g_bay}°", "Máy bay"), "options": opt, "ans": ans, "exp": f"Độ cao = Quãng đường $\\times \\sin({g_bay}^\circ) = {l_bay} \\times \\sin({g_bay}^\circ) \\approx {h_bay}km$."})
+    
+    h28 = random.choice([4, 6, 8])
+    opt, ans = make_opts("60^\circ", "30^\circ", "45^\circ", "75^\circ")
+    pool_5.append({"q": f"Một cái thang dài ${h28}m$ dựa vào tường. Biết chân thang cách tường ${int(h28/2)}m$. Góc tạo bởi thang và mặt đất là:", "svg": svg_ladder(f"{h28}m", f"{int(h28/2)}m", "? °"), "options": opt, "ans": ans, "exp": f"$\\cos \\alpha = \\frac{{{int(h28/2)}}}{{{h28}}} = \\frac{{1}}{{2}} \Rightarrow \\alpha = 60^\circ$."})
+    
+    c1, c2, ch = random.choice([(3,4,5), (6,8,10)])
+    opt, ans = make_opts(f"\\frac{{{c1*c2}}}{{{ch}}}", f"\\frac{{{ch}}}{{2}}", f"\\frac{{{c1+c2}}}{{2}}", f"{c1+c2}")
+    pool_5.append({"q": f"Cho $\Delta ABC$ vuông tại $A$, có $AB = {c1}cm, AC = {c2}cm$. Độ dài đường cao $AH$ là:", "options": opt, "ans": ans, "exp": f"Cạnh huyền $BC = {ch}$. $AH.BC = AB.AC \Rightarrow AH = \\frac{{{c1*c2}}}{{{ch}}}$."})
+
+    # --- POOL 6: ĐƯỜNG TRÒN ---
+    opt, ans = make_opts("90^\circ", "180^\circ", "60^\circ", "120^\circ")
+    pool_6.append({"q": "Góc nội tiếp chắn nửa đường tròn có số đo là:", "options": opt, "ans": ans, "exp": "Tính chất SGK: Góc nội tiếp chắn nửa đường tròn là góc vuông ($90^\circ$)."})
+    
+    g_noi_tiep = random.choice([30, 45, 60])
+    opt, ans = make_opts(f"{g_noi_tiep*2}^\circ", f"{g_noi_tiep}^\circ", f"{180-g_noi_tiep}^\circ", f"{90-g_noi_tiep}^\circ")
+    pool_6.append({"q": f"Dựa vào hình vẽ bên dưới, biết góc nội tiếp $\widehat{{BAC}} = {g_noi_tiep}^\circ$. Số đo của góc ở tâm $\widehat{{BOC}}$ cùng chắn cung $BC$ là:", "svg": svg_circle_inscribed_angle(g_noi_tiep), "options": opt, "ans": ans, "exp": "Số đo góc ở tâm luôn gấp đôi số đo góc nội tiếp cùng chắn một cung."})
+    
+    opt, ans = make_opts("95^\circ", "85^\circ", "105^\circ", "15^\circ")
+    pool_6.append({"q": "Tứ giác $ABCD$ nội tiếp đường tròn. Nếu góc $\widehat{A} = 85^\circ$ thì góc $\widehat{C}$ đối diện với nó bằng:", "options": opt, "ans": ans, "exp": "Trong tứ giác nội tiếp, tổng hai góc đối bằng $180^\circ \Rightarrow \widehat{C} = 180^\circ - 85^\circ = 95^\circ$."})
+    
+    r_tron = random.randint(4, 9)
+    opt, ans = make_opts(f"{2*r_tron}\pi", f"{r_tron}\pi", f"{r_tron**2}\pi", f"{(r_tron**2)/2}\pi")
+    pool_6.append({"q": f"Chu vi của đường tròn có bán kính $R = {r_tron}cm$ là:", "options": opt, "ans": ans, "exp": f"Chu vi $C = 2\pi R = 2\pi({r_tron}) = {2*r_tron}\pi$."})
+    
+    r33, d33 = random.choice([(5, 6), (5, 8), (10, 12), (10, 16), (13, 10), (13, 24)])
+    h33 = int(math.sqrt(r33**2 - (d33/2)**2))
+    opt, ans = make_opts(f"{h33}cm", f"{h33+1}cm", f"{h33-1}cm", f"{h33+2}cm")
+    pool_6.append({"q": f"Cho đường tròn tâm $O$ bán kính ${r33}cm$ và dây cung $AB = {d33}cm$. Khoảng cách từ tâm $O$ đến dây $AB$ là:", "options": opt, "ans": ans, "exp": f"Gọi $H$ là trung điểm $AB \Rightarrow AH = {int(d33/2)}cm$. Áp dụng Pytago cho $\Delta OAH$: $OH = \sqrt{{{r33}^2 - {int(d33/2)}^2}} = {h33}cm$."})
+    
+    pool_6.append({"q": "Cho hai tiếp tuyến $AB$ và $AC$ cắt nhau tại $A$ (với $B, C$ là tiếp điểm). Khẳng định nào sau đây là ĐÚNG?", "options": ["A. $AB = AC$", "B. $AB \perp AC$", "C. $AB > AC$", "D. $AO \perp BC$ tại trọng tâm"], "ans": "A", "exp": "Theo tính chất hai tiếp tuyến cắt nhau, khoảng cách từ giao điểm đến hai tiếp điểm là bằng nhau."})
+    
+    pool_6.append({"q": "Cho đoạn thẳng $AB$ cố định. Quỹ tích các điểm $M$ nhìn đoạn $AB$ dưới một góc vuông là:", "options": ["A. Đường tròn đường kính AB", "B. Đường trung trực của AB", "C. Tia phân giác của góc vuông", "D. Đoạn thẳng AB"], "ans": "A", "exp": "Quỹ tích các điểm nhìn đoạn thẳng dưới 1 góc vuông là đường tròn đường kính đoạn thẳng đó."})
+
+    # --- POOL 7: HÌNH KHỐI ---
+    pool_7.append({"q": "Công thức tính diện tích toàn phần của hình trụ có bán kính đáy $r$ và chiều cao $h$ là:", "options": ["A. $S_{tp} = 2\pi r h + 2\pi r^2$", "B. $S_{tp} = \pi r^2 h$", "C. $S_{tp} = \pi r l + \pi r^2$", "D. $S_{tp} = 4\pi r^2$"], "ans": "A", "exp": "Diện tích toàn phần bằng tổng diện tích xung quanh và diện tích hai đáy."})
+    
+    r36 = random.randint(2, 4); h36 = random.randint(5, 8)
+    opt, ans = make_opts(f"{2*r36*h36}\pi", f"{r36*h36}\pi", f"{r36**2 * h36}\pi", f"{4*r36*h36}\pi")
+    pool_7.append({"q": f"Dựa vào kích thước trên hình vẽ, diện tích xung quanh của khối trụ này là:", "svg": svg_cylinder(str(r36), str(h36)), "options": opt, "ans": ans, "exp": f"$S_{{xq}} = 2\pi r h = 2\pi({r36})({h36}) = {2*r36*h36}\pi$."})
+    
+    r37 = random.randint(3, 5); l37 = random.randint(6, 10)
+    opt, ans = make_opts(f"{r37*l37}\pi", f"{r37**2 * l37}\pi", f"{2*r37*l37}\pi", f"{(r37*l37)/3}\pi")
+    pool_7.append({"q": f"Một hình nón có bán kính đáy $r = {r37}cm$, đường sinh $l = {l37}cm$. Diện tích xung quanh của hình nón là:", "svg": svg_cone(str(r37), str(l37)), "options": opt, "ans": ans, "exp": f"Công thức $S_{{xq}} = \pi r l = \pi \cdot {r37} \cdot {l37} = {r37*l37}\pi$."})
+    
+    pool_7.append({"q": "Thể tích của một hình cầu có bán kính $R$ được tính bằng công thức nào?", "options": ["A. $V = \\frac{4}{3}\pi R^3$", "B. $V = 4\pi R^2$", "C. $V = \\frac{1}{3}\pi R^3$", "D. $V = \pi R^3$"], "ans": "A", "exp": "Thể tích hình cầu bằng $\\frac{4}{3}\pi R^3$."})
+
+    # --- POOL 8: THỐNG KÊ XÁC SUẤT ---
+    v1 = random.randint(30, 50); v2 = random.randint(20, 40); v3 = random.randint(35, 45)
+    tot_bar = v1 + v2 + v3
+    opt, ans = make_opts(str(tot_bar), str(v1+v2), str(tot_bar+10), str(tot_bar-5))
+    pool_8.append({"q": "Dựa vào biểu đồ cột thể hiện số học sinh giỏi của 3 lớp, tổng số học sinh giỏi của cả 3 lớp khối 9 là bao nhiêu?", "svg": svg_bar_chart("9A", v1, "9B", v2, "9C", v3, "SỐ HỌC SINH GIỎI"), "options": opt, "ans": ans, "exp": f"Cộng 3 cột: ${v1} + {v2} + {v3} = {tot_bar}$ học sinh."})
+    
+    p1, p2, p3 = 25, 25, 50
+    opt, ans = make_opts("100", "50", "25", "150")
+    pool_8.append({"q": f"Biểu đồ quạt tròn biểu diễn tỉ lệ % môn học yêu thích. Biết tổng học sinh là $200$ em. Số học sinh yêu thích phần màu xanh lá ({p3}%) là bao nhiêu em?", "svg": svg_pie_chart(p1, p2, p3), "options": opt, "ans": ans, "exp": f"Số học sinh = $200 \\times 50\% = 100$ em."})
+    
+    c_list = [("xanh", "đỏ"), ("vàng", "trắng"), ("đỏ", "trắng")]
+    for _ in range(3):
+        color1, color2 = random.choice(c_list)
+        w39 = random.randint(3, 7); l39 = random.randint(4, 8); tot39 = w39 + l39
+        opt, ans = make_opts(f"\\frac{{{w39}}}{{{tot39}}}", f"\\frac{{{w39}}}{{{l39}}}", f"\\frac{{{l39}}}{{{tot39}}}", f"\\frac{{1}}{{{tot39}}}")
+        pool_8.append({"q": f"Trong hộp có ${w39}$ quả bóng {color1} và ${l39}$ quả bóng {color2}. Xác suất lấy ngẫu nhiên 1 quả bóng được bóng {color1} là:", "svg": svg_box_of_balls(color1, w39, color2, l39), "options": opt, "ans": ans, "exp": f"Xác suất = $\\frac{{{w39}}}{{{tot39}}}$."})
+    
+    opt, ans = make_opts("\\frac{1}{2}", "\\frac{1}{3}", "\\frac{1}{6}", "\\frac{2}{3}")
+    pool_8.append({"q": "Gieo một con xúc xắc cân đối. Xác suất để mặt xuất hiện là số nguyên tố bằng:", "options": opt, "ans": ans, "exp": "Số nguyên tố thuộc tập $\{2; 3; 5\}$. Xác suất $P = \\frac{3}{6} = \\frac{1}{2}$."})
+
+    # --- Lấy ngẫu nhiên theo ma trận ---
+    selected = random.sample(pool_1, 5) + random.sample(pool_2, 5) + random.sample(pool_3, 7) + random.sample(pool_4, 3) + random.sample(pool_5, 5) + random.sample(pool_6, 6) + random.sample(pool_7, 4) + random.sample(pool_8, 5)
+    random.shuffle(selected)
+    return selected
+
+# ==========================================
+# 6. HIỂN THỊ TOÁN HỌC & GIAO DIỆN BÀI THI
+# ==========================================
+def render_exam_content(text):
+    st.markdown(format_math(text), unsafe_allow_html=True)
+
+def take_exam_ui(exam_data, exam_id, is_mandatory=True, is_review=False, user_ans_data=None):
+    if is_review and user_ans_data:
+        st.markdown(f"### 🔍 XEM LẠI BÀI")
+        questions = exam_data['questions']
+        correct_count = 0
+        for i, q in enumerate(questions):
+            ans = user_ans_data.get(str(i)) or user_ans_data.get(i)
+            correct_char = q['ans'].strip()[0].upper()
+            if ans and str(ans).strip().upper().startswith(correct_char):
+                correct_count += 1
+                
+        col1, col2 = st.columns(2)
+        score = round((correct_count / len(questions)) * 10, 2)
+        col1.metric("📌 ĐIỂM", f"{score} / 10")
+        col2.metric("🎯 ĐÚNG", f"{correct_count} / {len(questions)}")
+        st.divider()
+        
+        for i, q in enumerate(questions):
+            correct_char = q['ans'].strip()[0].upper()
+            usr_choice = user_ans_data.get(str(i)) or user_ans_data.get(i)
+            is_correct = False
+            if usr_choice and str(usr_choice).strip().upper().startswith(correct_char):
+                is_correct = True
+                
+            icon = "✅" if is_correct else "❌"
+            with st.expander(f"Câu {i+1}: {icon} | {q['ans']}"):
+                render_exam_content(q['q'])
+                if 'svg' in q and q['svg']:
+                    st.markdown(q['svg'], unsafe_allow_html=True)
+                formatted_choice = format_math(str(usr_choice)) if usr_choice else 'Không chọn'
+                st.markdown(f"**Đã chọn:** {formatted_choice}")
+                
+                if not is_correct: 
+                    st.info(f"**Giải:**\n{format_math(q.get('exp', 'Đang cập nhật...'))}")
+                
+        if st.button("⬅️ Trở về"):
+            st.session_state.show_results = False
+            st.session_state.current_exam_id = None
+            st.session_state.taking_free_exam = None
+            st.session_state.taking_exam = None
+            st.session_state.review_mode = False
+            st.rerun()
+        return
+
+    st.markdown(f"### 📝 LÀM BÀI")
+    time_limit = exam_data.get('time_limit', 90)
+    questions = exam_data['questions']
+    
+    if 'student_answers' not in st.session_state or st.session_state.get('current_exam_id') != exam_id:
+        st.session_state.student_answers = {}
+        st.session_state.current_exam_id = exam_id
+        st.session_state.show_results = False
+        st.session_state[f"submitted_{exam_id}"] = False 
+
+    if not st.session_state.get('show_results'):
+        timer_html = f"""
+        <div style="position: fixed; top: 60px; right: 20px; background-color: #ff4b4b; color: white; padding: 10px 15px; border-radius: 8px; font-weight: bold; font-size: 16px; z-index: 9999; box-shadow: 2px 2px 10px rgba(0,0,0,0.5);">
+            ⏳ <span id="timer">{time_limit}:00</span>
+        </div>
+        <script>
+            var limit = {time_limit} * 60 * 1000;
+            var start = new Date().getTime();
+            var x = setInterval(function() {{
+                var now = new Date().getTime();
+                var distance = limit - (now - start);
+                var m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                var s = Math.floor((distance % (1000 * 60)) / 1000);
+                document.getElementById("timer").innerHTML = m + ":" + (s < 10 ? "0" : "") + s;
+                if (distance < 0 && !window.submitted) {{
+                    window.submitted = true;
+                    clearInterval(x);
+                    document.getElementById("timer").innerHTML = "HẾT GIỜ!";
+                    var btns = window.parent.document.querySelectorAll('button');
+                    btns.forEach(b => {{ if(b.innerText.includes('NỘP BÀI')) b.click(); }});
+                }}
+            }}, 1000);
+        </script>
+        """
+        st.components.v1.html(timer_html, height=0)
+
+        with st.form(f"exam_form_{exam_id}"):
+            for i, q in enumerate(questions):
+                st.markdown(f"**Câu {i+1}:**")
+                render_exam_content(q['q'])
+                if 'svg' in q and q['svg']:
+                    st.markdown(q['svg'], unsafe_allow_html=True)
+                formatted_options = [format_math(q_opt) for q_opt in q['options']]
+                st.session_state.student_answers[i] = st.radio("Chọn:", formatted_options, index=None, key=f"q_{i}", label_visibility="collapsed")
+                st.divider()
+            
+            if st.form_submit_button("NỘP BÀI"):
+                if not st.session_state.get(f"submitted_{exam_id}"):
+                    st.session_state[f"submitted_{exam_id}"] = True
+                    correct = 0
+                    for i, q in enumerate(questions):
+                        correct_char = q['ans'].strip()[0].upper()
+                        usr_choice = st.session_state.student_answers.get(i) or st.session_state.student_answers.get(str(i))
+                        if usr_choice and str(usr_choice).strip().upper().startswith(correct_char):
+                            correct += 1
+                    
+                    score = round((correct / len(questions)) * 10, 2)
+                    
+                    if is_mandatory:
+                        conn = get_conn()
+                        ans_json = json.dumps(st.session_state.student_answers)
+                        conn.execute("INSERT INTO mandatory_results (username, exam_id, score, user_answers_json) VALUES (?,?,?,?)", (st.session_state.current_user, exam_id, score, ans_json))
+                        conn.commit(); conn.close()
+                        
+                    st.session_state.score = score
+                    st.session_state.correct_count = correct
+                    st.session_state.show_results = True
+                    st.rerun()
+                
+    else:
+        col1, col2 = st.columns(2)
+        col1.metric("📌 ĐIỂM", f"{st.session_state.score} / 10")
+        col2.metric("🎯 ĐÚNG", f"{st.session_state.correct_count} / {len(questions)}")
+        st.divider()
+        
+        for i, q in enumerate(questions):
+            correct_char = q['ans'].strip()[0].upper()
+            usr_choice = st.session_state.student_answers.get(i) or st.session_state.student_answers.get(str(i))
+            is_correct = False
+            if usr_choice and str(usr_choice).strip().upper().startswith(correct_char):
+                is_correct = True
+            
+            icon = "✅" if is_correct else "❌"
+            with st.expander(f"Câu {i+1}: {icon} | {q['ans']}"):
+                render_exam_content(q['q'])
+                if 'svg' in q and q['svg']:
+                    st.markdown(q['svg'], unsafe_allow_html=True)
+                formatted_choice = format_math(str(usr_choice)) if usr_choice else 'Không chọn'
+                st.markdown(f"**Đã chọn:** {formatted_choice}")
+                
+                if not is_correct:
+                    st.info(f"**Giải:**\n{format_math(q.get('exp', 'Đang cập nhật...'))}")
+
+        st.divider()
+        if st.button("⬅️ Trở về"):
+            st.session_state.show_results = False
+            st.session_state.current_exam_id = None
+            st.session_state.taking_free_exam = None
+            st.session_state.taking_exam = None
+            st.rerun()
+
+# ==========================================
+# 7. GIAO DIỆN ĐIỀU HƯỚNG CHÍNH
+# ==========================================
+def main():
+    st.set_page_config(page_title="LMS Lê Quý Đôn", layout="wide")
+    init_db()
+    
+    if 'current_user' not in st.session_state:
+        st.markdown("<h2 style='text-align: center;'>🎓 HỆ THỐNG LMS LÊ QUÝ ĐÔN</h2>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns([1, 1.2, 1])
+        with col2:
+            with st.form("login"):
+                u = st.text_input("Tài khoản").strip(); p = st.text_input("Mật khẩu", type="password").strip()
+                if st.form_submit_button("ĐĂNG NHẬP"):
+                    conn = get_conn()
+                    res = conn.execute("SELECT role, fullname, class_name, managed_classes, password FROM users WHERE username=?", (u,)).fetchone()
+                    conn.close()
+                    if res and p == res[4]:
+                        st.session_state.current_user = u
+                        st.session_state.role, st.session_state.fullname, st.session_state.class_name, st.session_state.managed = res[0], res[1], res[2], res[3]
+                        st.rerun()
+                    else: st.error("❌ Sai thông tin đăng nhập!")
+    else:
+        role = st.session_state.role
+        with st.sidebar:
+            st.markdown(f"### 👤 {st.session_state.fullname}")
+            
+            if role == "core_admin":
+                st.markdown("---")
+                api_key = get_api_key()
+                new_key = st.text_input("API Key:", value=api_key, type="password")
+                if st.button("Lưu API"):
+                    conn = get_conn()
+                    conn.execute("INSERT OR REPLACE INTO system_settings VALUES ('GEMINI_API_KEY', ?)", (new_key.strip(),))
+                    conn.commit(); conn.close(); st.success("✅ Đã lưu!")
+            st.markdown("---")
+            
+            if role in ["core_admin", "sub_admin"]:
+                menu = ["📤 Giao đề", "📊 Thống kê"]
+                if role == "core_admin": menu = ["🛡️ Quản trị"] + menu
+                elif role == "sub_admin": menu = ["👥 Quản lý lớp"] + menu
+            elif role == "student":
+                menu = ["✍️ Bài tập", "🚀 Luyện đề"]
+                
+            choice = st.radio("Menu", menu, label_visibility="collapsed")
+            if st.button("🚪 Thoát", use_container_width=True): st.session_state.clear(); st.rerun()
+
+        if role in ["core_admin", "sub_admin"]:
+            conn = get_conn()
+            c_stu = [r[0].strip() for r in conn.execute("SELECT DISTINCT class_name FROM users WHERE role='student' AND class_name != ''").fetchall()]
+            c_man = []
+            for r in conn.execute("SELECT managed_classes FROM users WHERE role='sub_admin'").fetchall():
+                if r[0]: c_man.extend([x.strip() for x in r[0].split(',') if x.strip()])
+            all_cl = sorted(list(set(c_stu + c_man)))
+            conn.close()
+
+        if choice == "🛡️ Quản trị":
+            st.header("Quản trị")
+            t1, t2, t3, t4 = st.tabs(["Admin", "Học Sinh", "Nạp File", "Xóa Lớp"])
+            with t1:
+                with st.form("add_sa"):
+                    u_s, p_s, n_s, m_s = st.text_input("User"), st.text_input("Pass"), st.text_input("Tên"), st.text_input("Lớp")
+                    if st.form_submit_button("Thêm"):
+                        conn = get_conn(); conn.execute("INSERT INTO users (username, password, role, fullname, managed_classes) VALUES (?,?,'sub_admin',?,?)", (u_s, p_s, n_s, m_s)); conn.commit(); st.success("Xong!"); st.rerun()
+                account_manager_ui("sub_admin")
+            with t2:
+                sel = st.selectbox("Lớp:", ["Tất cả"] + all_cl)
+                account_manager_ui("student", specific_class=sel if sel != "Tất cả" else None)
+            with t3: import_student_module()
+            with t4: delete_class_module(all_cl)
+
+        elif choice == "👥 Quản lý lớp":
+            st.header("Quản lý")
+            conn = get_conn()
+            st.session_state.managed = conn.execute("SELECT managed_classes FROM users WHERE username=?", (st.session_state.current_user,)).fetchone()[0]
+            conn.close()
+            my_cl = [x.strip() for x in st.session_state.managed.split(',')] if st.session_state.managed else []
+            t1, t2 = st.tabs(["Danh sách", "Nạp File"])
+            with t1:
+                sel = st.selectbox("Lớp:", ["Tất cả"] + my_cl)
+                account_manager_ui("student", specific_class=sel if sel != "Tất cả" else (",".join(my_cl) if my_cl else "NONE"))
+            with t2: import_student_module()
+
+        elif choice == "📤 Giao đề":
+            st.header("Giao đề")
+            api_key = get_api_key()
+            if not api_key: st.error("❌ Chưa cấu hình API.")
+            else:
+                target_classes = ["Tất cả"] + all_cl if role == "core_admin" else [x.strip() for x in st.session_state.managed.split(',')]
+                t_ai, t_admin = st.tabs(["AI Sinh Đề", "AI Giải Đề"])
+                with t_ai:
+                    with st.form("form_ai_gen"):
+                        e_title_ai = st.text_input("Tên bài:", value="Đề Kiểm Tra Toán")
+                        e_class_ai = st.selectbox("Lớp:", target_classes, key="class_ai")
+                        e_time_ai = st.number_input("Phút:", min_value=15, value=90, step=5, key="time_ai")
+                        if st.form_submit_button("GIAO ĐỀ"):
+                            if e_title_ai:
+                                with st.spinner("Đang xử lý..."):
+                                    exam_res = generate_ai_exam_for_admin(api_key)
+                                    if isinstance(exam_res, list):
+                                        conn = get_conn()
+                                        conn.execute("INSERT INTO mandatory_exams (title, questions_json, time_limit, target_class, created_by) VALUES (?,?,?,?,?)",
+                                                     (e_title_ai, json.dumps(exam_res), e_time_ai, e_class_ai, st.session_state.current_user))
+                                        conn.commit(); conn.close()
+                                        st.success("✅ Xong!")
+                                    else: st.error(f"❌ {exam_res}")
+                            else: st.warning("Điền tên bài!")
+                with t_admin:
+                    with st.form("form_admin_manual"):
+                        e_title_man = st.text_input("Tên bài:", value="Đề Kiểm Tra Toán")
+                        e_class_man = st.selectbox("Lớp:", target_classes, key="class_man")
+                        e_time_man = st.number_input("Phút:", min_value=15, value=90, step=5, key="time_man")
+                        e_text = st.text_area("Nội dung:", height=150)
+                        e_file = st.file_uploader("PDF", type="pdf")
+                        if st.form_submit_button("XỬ LÝ & GIAO"):
+                            if e_title_man and (e_text.strip() or e_file):
+                                with st.spinner("Đang xử lý..."):
+                                    raw_txt = e_text.strip()
+                                    if e_file: raw_txt += "\n" + extract_text_from_pdf(e_file)
+                                    exam_res = parse_admin_exam_with_ai(raw_txt, api_key)
+                                    if isinstance(exam_res, list):
+                                        conn = get_conn()
+                                        conn.execute("INSERT INTO mandatory_exams (title, questions_json, time_limit, target_class, created_by) VALUES (?,?,?,?,?)",
+                                                     (e_title_man, json.dumps(exam_res), e_time_man, e_class_man, st.session_state.current_user))
+                                        conn.commit(); conn.close()
+                                        st.success("✅ Xong!")
+                                    else: st.error(f"❌ {exam_res}")
+                            else: st.warning("Nhập nội dung/file!")
+
+        elif choice == "📊 Thống kê":
+            st.header("Thống kê")
+            conn = get_conn()
+            if role == "core_admin":
+                exams = conn.execute("SELECT id, title, target_class, questions_json FROM mandatory_exams").fetchall()
+            else:
+                classes_str = "', '".join([x.strip() for x in st.session_state.managed.split(',')])
+                exams = conn.execute(f"SELECT id, title, target_class, questions_json FROM mandatory_exams WHERE target_class IN ('{classes_str}') OR target_class='Tất cả'").fetchall()
+            if not exams: st.info("Trống.")
+            else:
+                exam_dict = {f"[{e[2]}] {e[1]}": e for e in exams}
+                sel_exam_name = st.selectbox("Chọn:", ["-- Chọn --"] + list(exam_dict.keys()))
+                if sel_exam_name != "-- Chọn --":
+                    exam_id, exam_title, target_class, q_json_str = exam_dict[sel_exam_name]
+                    questions = json.loads(q_json_str)
+                    num_questions = len(questions)
+                    tb1, tb2, tb3 = st.tabs(["Điểm", "Chưa thi", "Phân tích"])
+                    res_df = pd.read_sql_query("SELECT u.fullname AS 'Họ tên', u.username, u.class_name AS 'Lớp', r.score AS 'Điểm', r.user_answers_json FROM mandatory_results r JOIN users u ON r.username = u.username WHERE r.exam_id = ?", conn, params=(exam_id,))
+                    with tb1:
+                        if res_df.empty: st.info("Trống.")
+                        else: st.dataframe(res_df[['Họ tên', 'Lớp', 'Điểm']], use_container_width=True)
+                    with tb2:
+                        if target_class == "Tất cả":
+                            if role == "core_admin": all_st = pd.read_sql_query("SELECT fullname, username, class_name FROM users WHERE role='student'", conn)
+                            else: all_st = pd.read_sql_query(f"SELECT fullname, username, class_name FROM users WHERE role='student' AND class_name IN ('{classes_str}')", conn)
+                        else: all_st = pd.read_sql_query("SELECT fullname, username, class_name FROM users WHERE role='student' AND class_name=?", conn, params=(target_class,))
+                        if res_df.empty: missing_df = all_st
+                        else:
+                            submitted = res_df['username'].tolist()
+                            missing_df = all_st[~all_st['username'].isin(submitted)]
+                        if missing_df.empty: st.success("100% hoàn thành.")
+                        else: st.dataframe(missing_df[['fullname', 'class_name', 'username']].rename(columns={'fullname':'Họ tên', 'class_name':'Lớp', 'username':'Tài khoản'}), use_container_width=True)
+                    with tb3:
+                        if res_df.empty: st.info("Trống.")
+                        else:
+                            wrong_counts = {f"Câu {i+1}": 0 for i in range(num_questions)}
+                            for idx, row in res_df.iterrows():
+                                try:
+                                    u_ans = json.loads(row['user_answers_json'])
+                                    for i, q in enumerate(questions):
+                                        correct_char = q['ans'].strip()[0].upper()
+                                        user_choice = u_ans.get(str(i), u_ans.get(i, "")) 
+                                        if not user_choice or not str(user_choice).strip().upper().startswith(correct_char): wrong_counts[f"Câu {i+1}"] += 1
+                                except: pass
+                            stat_df = pd.DataFrame(list(wrong_counts.items()), columns=['Câu', 'Sai'])
+                            st.bar_chart(stat_df.set_index('Câu'))
+            conn.close()
+
+        elif choice == "✍️ Bài tập":
+            st.header("Bài tập")
+            conn = get_conn()
+            student_class = st.session_state.class_name.strip() if st.session_state.class_name else ""
+            exams = conn.execute("SELECT id, title, questions_json, time_limit FROM mandatory_exams WHERE trim(target_class)=? OR target_class='Tất cả'", (student_class,)).fetchall()
+            if not exams: st.info("Trống.")
+            else:
+                if st.session_state.get('taking_exam') is None:
+                    for e_id, e_title, e_json, e_time in exams:
+                        c1, c2 = st.columns([3, 1])
+                        done = conn.execute("SELECT score, user_answers_json FROM mandatory_results WHERE username=? AND exam_id=?", (st.session_state.current_user, e_id)).fetchone()
+                        if done: 
+                            if c1.button(f"🔍 {e_title}", key=f"rev_{e_id}"):
+                                st.session_state.taking_exam = {'id': e_id, 'title': e_title, 'time_limit': e_time, 'questions': json.loads(e_json)}
+                                st.session_state.review_mode = True
+                                st.session_state.review_data = json.loads(done[1])
+                                st.rerun()
+                            c2.success(f"{done[0]} đ")
+                        else:
+                            c1.markdown(f"**{e_title}**")
+                            if c2.button("LÀM BÀI", key=f"btn_{e_id}"):
+                                st.session_state.taking_exam = {'id': e_id, 'title': e_title, 'time_limit': e_time, 'questions': json.loads(e_json)}
+                                st.session_state.review_mode = False
+                                st.rerun()
+                else: 
+                    take_exam_ui(st.session_state.taking_exam, st.session_state.taking_exam['id'], True, st.session_state.get('review_mode', False), st.session_state.get('review_data'))
+            conn.close()
+
+        elif choice == "🚀 Luyện đề":
+            st.header("Luyện đề") 
+            if st.session_state.get('taking_free_exam') is None:
+                if st.button("TẠO ĐỀ", type="primary"): 
+                    with st.spinner("Đang xử lý..."):
+                        time.sleep(0.5) 
+                        free_exam = generate_algorithmic_practice()
+                        st.session_state.taking_free_exam = {'title': "Luyện đề", 'time_limit': 90, 'questions': free_exam}
+                        st.rerun()
+            else:
+                take_exam_ui(st.session_state.taking_free_exam, 9999, False)
+                if st.button("❌ Hủy"):
+                    st.session_state.taking_free_exam = None
+                    st.session_state.show_results = False
+                    st.rerun()
+
+if __name__ == "__main__":
+    main()
