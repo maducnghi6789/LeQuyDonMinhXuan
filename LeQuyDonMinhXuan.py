@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V45 (A1 SUPREME - BẢN KIM CƯƠNG BẤT BẠI) ---
+# --- CẤU HÌNH HỆ THỐNG V45 (A1 SUPREME - BẢN KIM CƯƠNG CHUẨN HÓA ĐỒ HỌA SVG) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -70,7 +70,7 @@ def get_api_key():
     return res[0] if res else ""
 
 # ==========================================
-# 2. HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU (FIX LỖI CÚ PHÁP ĐỨT DÒNG)
+# 2. HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU
 # ==========================================
 def init_db():
     conn = get_conn()
@@ -228,7 +228,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI ĐỌC & BIÊN SOẠN ĐỀ (FIX LỖI 404 & FORMAT JSON)
+# 4. MODULE AI ĐỌC & BIÊN SOẠN ĐỀ
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -238,20 +238,11 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key_string):
-    """Băng đạn 6 viên: Tự động trượt model lỗi 404, trượt key lỗi 429"""
     if not api_key_string or not api_key_string.strip(): return "LỖI: Chưa nhập API Key."
     keys = [k.strip() for k in api_key_string.split(',') if k.strip()]
     random.shuffle(keys)
     
-    # Danh sách Model Fallback xuyên 404
-    models_to_try = [
-        'gemini-2.5-flash',
-        'gemini-2.0-flash',
-        'gemini-1.5-flash-latest',
-        'gemini-1.5-flash',
-        'gemini-1.0-pro'
-    ]
-    
+    models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-1.0-pro']
     last_err = ""
     for attempt in range(2):
         for current_key in keys:
@@ -268,14 +259,13 @@ def safe_ai_generate(prompt, api_key_string):
                         parsed_json = json.loads(cleaned_text)
                         if isinstance(parsed_json, list) and len(parsed_json) > 0: return parsed_json
                     except json.JSONDecodeError:
-                        continue # Hỏng format thì bỏ qua, thử model khác
-                        
+                        continue 
                 except Exception as e:
                     err_msg = str(e).lower()
                     last_err = err_msg
-                    if "404" in err_msg or "not found" in err_msg: continue # Lỗi tên Model, qua model tiếp
-                    elif "429" in err_msg or "quota" in err_msg: break # Lỗi API Key quá tải, qua Key tiếp
-                    elif "403" in err_msg or "api key" in err_msg: break # Lỗi API Key hỏng, qua Key tiếp
+                    if "404" in err_msg or "not found" in err_msg: continue 
+                    elif "429" in err_msg or "quota" in err_msg: break 
+                    elif "403" in err_msg or "api key" in err_msg: break 
                     else: continue
         if "429" in last_err or "quota" in last_err: time.sleep(5)
         else: break
@@ -283,7 +273,7 @@ def safe_ai_generate(prompt, api_key_string):
 
 def generate_ai_exam_for_admin(api_key):
     prompt = """Hãy đóng vai là một chuyên gia ra đề thi Toán.
-    YÊU CẦU TỐI THƯỢNG: TẠO MỘT ĐỀ THI GỒM ĐÚNG 40 CÂU KHÁC NHAU HOÀN TOÀN VỀ DẠNG BÀI. TUYỆT ĐỐI KHÔNG ĐƯỢC LẶP LẠI (Ví dụ: Đã hỏi khoảng cách dây cung thì không hỏi lại nữa). Phải phủ sóng đầy đủ 40 kiến thức.
+    YÊU CẦU TỐI THƯỢNG: TẠO MỘT ĐỀ THI GỒM ĐÚNG 40 CÂU KHÁC NHAU HOÀN TOÀN VỀ DẠNG BÀI. TUYỆT ĐỐI KHÔNG ĐƯỢC LẶP LẠI. Phải phủ sóng đầy đủ 40 kiến thức riêng biệt.
     MA TRẬN: Căn thức, Hàm số y=ax^2, PT & Hệ PT, Bất PT, Hệ thức lượng, Đường tròn, Hình khối, Thống kê & Xác suất.
     ĐỊNH DẠNG JSON BẮT BUỘC: [{"q": "...", "options": ["A. $...$", "B. $...$", "C. $...$", "D. $...$"], "ans": "A", "exp": "Giải nhanh..."}]
     LƯU Ý CỰC KỲ QUAN TRỌNG: 
@@ -303,6 +293,7 @@ def parse_admin_exam_with_ai(raw_text, api_key):
 
 # ==========================================
 # 5. BỘ CÔNG CỤ VẼ HÌNH ĐỘNG SVG (VECTOR GRAPHICS)
+# Mở rộng Canvas Hình Trụ chống tràn chữ `h`
 # ==========================================
 def svg_bar_chart(cat1, val1, cat2, val2, cat3, val3, title="Biểu đồ Tần số"):
     max_v = max(val1, val2, val3, 1)
@@ -405,10 +396,11 @@ def svg_ladder(ladder_val, dist_val, angle_val):
     </svg></div>
     """
 
+# ĐÃ MỞ RỘNG VIEWBOX LÊN 200 ĐỂ KHÔNG BỊ CẮT CHỮ h
 def svg_cylinder(r_val, h_val):
     return f"""
     <div style="display: flex; justify-content: center; margin: 15px 0;">
-    <svg width="160" height="200" viewBox="0 0 160 200" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)">
+    <svg width="200" height="200" viewBox="0 0 200 200" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)">
         <ellipse cx="80" cy="40" rx="60" ry="20" fill="#e2e8f0" stroke="#334155" stroke-width="2"/>
         <path d="M 20 40 L 20 160 A 60 20 0 0 0 140 160 L 140 40" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
         <path d="M 20 160 A 60 20 0 0 1 140 160" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5,5"/>
@@ -470,11 +462,10 @@ def svg_box_of_balls(color1_name, color1_count, color2_name, color2_count):
     """
 
 # ==========================================
-# 6. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE CHO LUYỆN TỰ DO)
+# 6. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE)
 # ==========================================
 def generate_algorithmic_practice():
     questions = []
-    
     def make_opts(*args):
         opts = [f"${str(opt)}$" for opt in args]
         correct = opts[0]
@@ -489,26 +480,19 @@ def generate_algorithmic_practice():
     a1 = random.randint(3, 9); b1 = random.randint(2, 5)
     opt, ans = make_opts(a1-b1, a1+b1, b1-a1, -a1-b1)
     pool_1.append({"q": f"Tính giá trị của biểu thức $P = \sqrt{{{a1**2}}} - \sqrt{{{(-b1)**2}}}$", "options": opt, "ans": ans, "exp": f"$P = {a1} - |- {b1}| = {a1} - {b1} = {a1-b1}$."})
-    
     m2 = random.randint(2, 5); n2 = random.randint(1, 9)
     opt, ans = make_opts(f"x \\le \\frac{{{n2}}}{{{m2}}}", f"x \\ge \\frac{{{n2}}}{{{m2}}}", f"x < \\frac{{{n2}}}{{{m2}}}", f"x > \\frac{{{n2}}}{{{m2}}}")
     pool_1.append({"q": f"Biểu thức $\sqrt{{{n2} - {m2}x}}$ xác định khi và chỉ khi:", "options": opt, "ans": ans, "exp": f"${n2} - {m2}x \\ge 0 \Leftrightarrow {m2}x \\le {n2} \Leftrightarrow x \\le \\frac{{{n2}}}{{{m2}}}$."})
-
     k3 = random.choice([2, 3, 5, 7])
     opt, ans = make_opts(f"2\sqrt{{{k3}}}", f"\sqrt{{{k3}}}", f"\\frac{{2}}{{\sqrt{{{k3}}}}}", f"{k3}\sqrt{{{k3}}}")
     pool_1.append({"q": f"Kết quả của phép trục căn thức ở mẫu $\\frac{{{k3*2}}}{{\sqrt{{{k3}}}}}$ là:", "options": opt, "ans": ans, "exp": f"Nhân cả tử và mẫu với $\sqrt{{{k3}}}$ ta được $\\frac{{{k3*2}\sqrt{{{k3}}}}}{{{k3}}} = 2\sqrt{{{k3}}}$."})
-
     pool_1.append({"q": "Khẳng định nào sau đây là đúng?", "options": ["A. $\sqrt{16} \cdot \sqrt{9} = 12$", "B. $\sqrt{16 + 9} = 7$", "C. $\sqrt{16} + \sqrt{9} = 5$", "D. $\sqrt{16 - 9} = \sqrt{7}$"], "ans": "A", "exp": "Ta có $\sqrt{16} \cdot \sqrt{9} = 4 \cdot 3 = 12$."})
-
     p5 = random.randint(2, 6)
     opt, ans = make_opts(f"\\frac{{{p5**2+1}}}{{2}}", f"\\frac{{{p5**2-1}}}{{2}}", f"{p5**2+1}", f"{p5**2-1}")
     pool_1.append({"q": f"Phương trình $\sqrt{{2x - 1}} = {p5}$ có nghiệm là:", "options": opt, "ans": ans, "exp": f"Bình phương hai vế: $2x - 1 = {p5**2} \Leftrightarrow 2x = {p5**2+1} \Leftrightarrow x = \\frac{{{p5**2+1}}}{{2}}$."})
-
     opt, ans = make_opts("2\sqrt{5}-2", "2", "-2", "4\sqrt{5}")
     pool_1.append({"q": "Rút gọn biểu thức $M = \sqrt{(2-\sqrt{5})^2} + \sqrt{5}$", "options": opt, "ans": ans, "exp": "Vì $2 < \sqrt{5}$ nên $\sqrt{(2-\sqrt{5})^2} = |2-\sqrt{5}| = \sqrt{5}-2$. Vậy $M = \sqrt{5}-2 + \sqrt{5} = 2\sqrt{5}-2$."})
-
-    n7 = random.randint(2, 5)
-    v7 = (n7-1)**2
+    n7 = random.randint(2, 5); v7 = (n7-1)**2
     opt, ans = make_opts(v7, v7-1, v7+1, v7*2)
     pool_1.append({"q": f"Biết $\sqrt{{x}} = {n7-1}$, thì $x$ bằng:", "options": opt, "ans": ans, "exp": f"Bình phương hai vế: $x = ({n7-1})^2 = {v7}$."})
 
@@ -516,23 +500,17 @@ def generate_algorithmic_practice():
     a_h1 = random.choice([-3, -2, 2, 3]); x_h1 = random.randint(1, 3)
     opt, ans = make_opts(a_h1*(x_h1**2), -a_h1*(x_h1**2), a_h1*x_h1, -a_h1*x_h1)
     pool_2.append({"q": f"Biết điểm $M({x_h1}; y_0)$ thuộc đồ thị hàm số $y = {a_h1}x^2$. Giá trị của $y_0$ là:", "options": opt, "ans": ans, "exp": f"Thay $x = {x_h1}$ vào hàm số: $y_0 = {a_h1} \cdot ({x_h1})^2 = {a_h1*(x_h1**2)}$."})
-
     is_up = "đồng biến" if a_h1 > 0 else "nghịch biến"
     pool_2.append({"q": f"Hàm số $y = {a_h1}x^2$ có tính chất nào sau đây?", "options": [f"A. Đồng biến khi $x > 0$" if a_h1>0 else f"A. Nghịch biến khi $x > 0$", f"B. Đồng biến khi $x < 0$" if a_h1>0 else f"B. Nghịch biến khi $x < 0$", "C. Luôn đồng biến trên $\mathbb{R}$", "D. Luôn nghịch biến trên $\mathbb{R}$"], "ans": "A", "exp": f"Vì hệ số $a = {a_h1}$, hàm số {is_up} khi $x > 0$."})
-
     opt, ans = make_opts("A(-1; 1) \\text{ và } B(2; 4)", "A(1; -1) \\text{ và } B(4; 2)", "A(-1; -1) \\text{ và } B(2; -4)", "A(1; 1) \\text{ và } B(2; 2)")
     pool_2.append({"q": "Dựa vào đồ thị dưới đây, tọa độ các giao điểm của parabol $(P): y = x^2$ và đường thẳng $(d): y = x + 2$ là:", "svg": svg_parabola_intersection("A(-1; 1)", "B(2; 4)"), "options": opt, "ans": ans, "exp": "Quan sát trên đồ thị, hai điểm cắt nhau rõ ràng tại $A(-1; 1)$ và $B(2; 4)$."})
-
     m_h4 = random.randint(2, 5)
     opt, ans = make_opts(m_h4-2, m_h4+2, 2-m_h4, 0)
     pool_2.append({"q": f"Đường thẳng $y = ({m_h4} - m)x + 3$ đi qua điểm $A(1; 5)$. Giá trị của $m$ là:", "options": opt, "ans": ans, "exp": f"Thay $x=1, y=5$ vào phương trình: $5 = {m_h4} - m + 3 \Leftrightarrow m = {m_h4} + 3 - 5 = {m_h4-2}$."})
-
     opt, ans = make_opts("-3", "3", "4", "-4")
     pool_2.append({"q": "Hệ số góc của đường thẳng $y = -3x + 4$ là:", "options": opt, "ans": ans, "exp": "Đường thẳng $y = ax + b$ có hệ số góc là $a$. Vậy hệ số góc là $-3$."})
-
     opt, ans = make_opts("m = \\pm 1", "m = 1", "m = -1", "m = 2")
     pool_2.append({"q": "Hai đường thẳng $y = 2x + 1$ và $y = (m^2+1)x + 3$ song song với nhau khi:", "options": opt, "ans": ans, "exp": "Điều kiện song song: Hệ số góc bằng nhau $\Rightarrow m^2 + 1 = 2 \Leftrightarrow m^2 = 1 \Leftrightarrow m = \\pm 1$."})
-
     a_h7 = random.choice([2, 4])
     opt, ans = make_opts(a_h7*4, -a_h7*4, a_h7*2, -a_h7*2)
     pool_2.append({"q": f"Giá trị của hàm số $y = {a_h7}x^2$ tại $x = -2$ là:", "options": opt, "ans": ans, "exp": f"Thay $x = -2 \Rightarrow y = {a_h7} \cdot (-2)^2 = {a_h7*4}$."})
@@ -540,29 +518,22 @@ def generate_algorithmic_practice():
     # --- POOL 3: PHƯƠNG TRÌNH & HỆ PHƯƠNG TRÌNH ---
     opt, ans = make_opts("(3; 2)", "(2; 3)", "(1; -2)", "(-3; -2)")
     pool_3.append({"q": "Nghiệm của hệ phương trình $\\begin{cases} 2x - y = 4 \\\\ x + y = 5 \end{cases}$ là:", "options": opt, "ans": ans, "exp": "Cộng vế theo vế ta được $3x = 9 \Rightarrow x = 3$. Thay vào pt (2) suy ra $y = 2$."})
-
     c_pt = random.randint(2, 6)
     opt, ans = make_opts(f"\\{{1; {c_pt}\\}}", f"\\{{-1; -{c_pt}\\}}", f"\\{{0; {c_pt}\\}}", f"\\{{1; -{c_pt}\\}}")
     pool_3.append({"q": f"Tập nghiệm của phương trình $x^2 - {(c_pt+1)}x + {c_pt} = 0$ là:", "options": opt, "ans": ans, "exp": f"Nhận thấy $a+b+c = 1 - {(c_pt+1)} + {c_pt} = 0$. Phương trình có nghiệm $x_1 = 1, x_2 = {c_pt}$."})
-
     S = random.randint(3, 9); P = random.randint(-8, 8)
     s_str = f"- {S}x" if S > 0 else f"+ {-S}x"
     p_str = f"+ {P}" if P > 0 else f"- {-P}"
     opt, ans = make_opts(S, -S, P, -P)
     pool_3.append({"q": f"Gọi $x_1, x_2$ là nghiệm của phương trình $x^2 {s_str} {p_str} = 0$. Giá trị của biểu thức $x_1 + x_2$ là:", "options": opt, "ans": ans, "exp": f"Theo hệ thức Vi-ét: $x_1 + x_2 = -\\frac{{b}}{{a}} = {S}$."})
-
     opt, ans = make_opts(P, -P, S, -S)
     pool_3.append({"q": f"Gọi $x_1, x_2$ là nghiệm của phương trình $x^2 {s_str} {p_str} = 0$. Giá trị của $x_1 \cdot x_2$ là:", "options": opt, "ans": ans, "exp": f"Theo hệ thức Vi-ét: $x_1 \cdot x_2 = \\frac{{c}}{{a}} = {P}$."})
-
     opt, ans = make_opts("4", "2", "0", "1")
     pool_3.append({"q": "Số nghiệm của phương trình $x^4 - 5x^2 + 4 = 0$ là:", "options": opt, "ans": ans, "exp": "Đặt $t = x^2 \\ge 0$, pt trở thành $t^2 - 5t + 4 = 0$. Có nghiệm $t=1$ và $t=4$. Từ đó suy ra $x = \\pm 1$ và $x = \\pm 2$. Vậy có 4 nghiệm."})
-
     opt, ans = make_opts("m = 4", "m = -4", "m = 2", "m = -2")
     pool_3.append({"q": "Điều kiện của tham số $m$ để phương trình $x^2 - 2x + m - 3 = 0$ có nghiệm kép là:", "options": opt, "ans": ans, "exp": "$\Delta' = (-1)^2 - 1(m-3) = 4 - m$. Để phương trình có nghiệm kép thì $\Delta' = 0 \Leftrightarrow m = 4$."})
-
     opt, ans = make_opts("7", "9", "11", "5")
     pool_3.append({"q": "Cho phương trình $x^2 - 3x + 1 = 0$ có hai nghiệm $x_1, x_2$. Giá trị của biểu thức $T = x_1^2 + x_2^2$ bằng:", "options": opt, "ans": ans, "exp": "Theo Vi-ét: $S = 3, P = 1$. Ta có $T = (x_1+x_2)^2 - 2x_1x_2 = 3^2 - 2(1) = 7$."})
-
     c_ng = random.randint(1, 5); ans_ng = "4" if c_ng+2 in [3,5,7] else "6"
     opt, ans = make_opts(ans_ng, "2", "8", "Vô số")
     pool_3.append({"q": f"Số cặp số nguyên $(x; y)$ thỏa mãn phương trình $x y - 2x - y = {c_ng}$ là:", "options": opt, "ans": ans, "exp": f"Biến đổi pt thành $x(y-2) - (y-2) = {c_ng+2} \Leftrightarrow (x-1)(y-2) = {c_ng+2}$. Dựa vào số ước nguyên của ${c_ng+2}$ để tìm số cặp."})
@@ -570,35 +541,27 @@ def generate_algorithmic_practice():
     # --- POOL 4: BẤT PHƯƠNG TRÌNH ---
     opt, ans = make_opts("x < 4", "x > 4", "x \\ge 4", "x \\le 4")
     pool_4.append({"q": "Tập nghiệm của bất phương trình $-3x + 12 > 0$ là:", "options": opt, "ans": ans, "exp": "$-3x > -12$. Chia hai vế cho số âm phải đổi chiều $\Rightarrow x < 4$."})
-    
     opt, ans = make_opts("-2", "-1", "-3", "-4")
     pool_4.append({"q": "Nghiệm nguyên âm lớn nhất thỏa mãn bất phương trình $2x + 5 > 0$ là:", "options": opt, "ans": ans, "exp": "$2x > -5 \Leftrightarrow x > -2.5$. Số nguyên âm lớn nhất thỏa mãn là $-2$."})
-    
     opt, ans = make_opts("m > \\frac{5}{2}", "m < \\frac{5}{2}", "m \\ge \\frac{5}{2}", "m \\neq \\frac{5}{2}")
     pool_4.append({"q": "Tìm tất cả các giá trị của tham số $m$ để hàm số $y = (5 - 2m)x + 1$ nghịch biến trên $\mathbb{R}$.", "options": opt, "ans": ans, "exp": "Hàm số nghịch biến khi hệ số góc $a < 0 \Leftrightarrow 5 - 2m < 0 \Leftrightarrow 2m > 5 \Leftrightarrow m > \\frac{5}{2}$."})
-    
     opt, ans = make_opts("2", "1", "4", "0.5")
     pool_4.append({"q": "Cho $x, y > 0$ thỏa mãn $x+y=2$. Giá trị nhỏ nhất của biểu thức $P = \\frac{1}{x} + \\frac{1}{y}$ là:", "options": opt, "ans": ans, "exp": "Áp dụng BĐT $\\frac{1}{x} + \\frac{1}{y} \\ge \\frac{4}{x+y} = \\frac{4}{2} = 2$. Dấu = xảy ra khi $x=y=1$."})
 
     # --- POOL 5: HỆ THỨC LƯỢNG ---
     pool_5.append({"q": "Trong tam giác vuông, bình phương đường cao ứng với cạnh huyền bằng:", "options": ["A. Tích hai hình chiếu của hai cạnh góc vuông trên cạnh huyền", "B. Tích hai cạnh góc vuông", "C. Tích cạnh huyền và đường cao", "D. Tổng bình phương hai cạnh góc vuông"], "ans": "A", "exp": "Lý thuyết cơ bản: $h^2 = b' \cdot c'$."})
-    
     opt, ans = make_opts("1", "0", "0.5", "2")
     pool_5.append({"q": "Giá trị của biểu thức $T = \cos^2 25^\circ + \cos^2 65^\circ$ bằng:", "options": opt, "ans": ans, "exp": "Vì hai góc phụ nhau nên $\cos 65^\circ = \sin 25^\circ$. Vậy $T = \cos^2 25^\circ + \sin^2 25^\circ = 1$."})
-    
     b27 = random.randint(4, 15); g27 = random.choice([30, 45, 60]); h27 = round(b27 * math.tan(math.radians(g27)), 1)
     obj = random.choice(["tòa nhà", "cột cờ", "tháp hải đăng", "cái cây"])
     opt, ans = make_opts(f"{h27}m", f"{round(b27/math.tan(math.radians(g27)),1)}m", f"{round(b27*math.sin(math.radians(g27)),1)}m", f"{round(b27*math.cos(math.radians(g27)),1)}m")
     pool_5.append({"q": f"Bóng của một {obj} trên mặt đất dài ${b27}m$. Tia sáng mặt trời tạo với mặt đất một góc ${g27}^\circ$. Chiều cao của {obj} xấp xỉ bằng:", "svg": svg_building("? m", f"{b27}m", f"{g27}°"), "options": opt, "ans": ans, "exp": f"Chiều cao = Bóng $\\times \\tan({g27}^\circ) = {b27} \\times \\tan({g27}^\circ) \\approx {h27}m$."})
-    
     l_bay = random.randint(4, 15); g_bay = random.choice([20, 25, 30]); h_bay = round(l_bay * math.sin(math.radians(g_bay)), 1)
     opt, ans = make_opts(f"{h_bay}km", f"{round(l_bay * math.cos(math.radians(g_bay)), 1)}km", f"{round(l_bay / math.sin(math.radians(g_bay)), 1)}km", f"{round(l_bay * math.tan(math.radians(g_bay)), 1)}km")
     pool_5.append({"q": f"Một chiếc máy bay cất cánh theo đường thẳng tạo với mặt đất góc ${g_bay}^\circ$. Sau khi bay được ${l_bay}km$, máy bay đang ở độ cao bao nhiêu km?", "svg": svg_right_triangle("Mặt đất", "? km", f"{l_bay}km", f"{g_bay}°", "Máy bay"), "options": opt, "ans": ans, "exp": f"Độ cao = Quãng đường $\\times \\sin({g_bay}^\circ) = {l_bay} \\times \\sin({g_bay}^\circ) \\approx {h_bay}km$."})
-    
     h28 = random.choice([4, 6, 8])
     opt, ans = make_opts("60^\circ", "30^\circ", "45^\circ", "75^\circ")
     pool_5.append({"q": f"Một cái thang dài ${h28}m$ dựa vào tường. Biết chân thang cách tường ${int(h28/2)}m$. Góc tạo bởi thang và mặt đất là:", "svg": svg_ladder(f"{h28}m", f"{int(h28/2)}m", "? °"), "options": opt, "ans": ans, "exp": f"$\\cos \\alpha = \\frac{{{int(h28/2)}}}{{{h28}}} = \\frac{{1}}{{2}} \Rightarrow \\alpha = 60^\circ$."})
-    
     c1, c2, ch = random.choice([(3,4,5), (6,8,10)])
     opt, ans = make_opts(f"\\frac{{{c1*c2}}}{{{ch}}}", f"\\frac{{{ch}}}{{2}}", f"\\frac{{{c1+c2}}}{{2}}", f"{c1+c2}")
     pool_5.append({"q": f"Cho $\Delta ABC$ vuông tại $A$, có $AB = {c1}cm, AC = {c2}cm$. Độ dài đường cao $AH$ là:", "options": opt, "ans": ans, "exp": f"Cạnh huyền $BC = {ch}$. $AH.BC = AB.AC \Rightarrow AH = \\frac{{{c1*c2}}}{{{ch}}}$."})
@@ -606,38 +569,29 @@ def generate_algorithmic_practice():
     # --- POOL 6: ĐƯỜNG TRÒN ---
     opt, ans = make_opts("90^\circ", "180^\circ", "60^\circ", "120^\circ")
     pool_6.append({"q": "Góc nội tiếp chắn nửa đường tròn có số đo là:", "options": opt, "ans": ans, "exp": "Tính chất SGK: Góc nội tiếp chắn nửa đường tròn là góc vuông ($90^\circ$)."})
-    
     g_noi_tiep = random.choice([30, 45, 60])
     opt, ans = make_opts(f"{g_noi_tiep*2}^\circ", f"{g_noi_tiep}^\circ", f"{180-g_noi_tiep}^\circ", f"{90-g_noi_tiep}^\circ")
     pool_6.append({"q": f"Dựa vào hình vẽ bên dưới, biết góc nội tiếp $\widehat{{BAC}} = {g_noi_tiep}^\circ$. Số đo của góc ở tâm $\widehat{{BOC}}$ cùng chắn cung $BC$ là:", "svg": svg_circle_inscribed_angle(g_noi_tiep), "options": opt, "ans": ans, "exp": "Số đo góc ở tâm luôn gấp đôi số đo góc nội tiếp cùng chắn một cung."})
-    
     opt, ans = make_opts("95^\circ", "85^\circ", "105^\circ", "15^\circ")
     pool_6.append({"q": "Tứ giác $ABCD$ nội tiếp đường tròn. Nếu góc $\widehat{A} = 85^\circ$ thì góc $\widehat{C}$ đối diện với nó bằng:", "options": opt, "ans": ans, "exp": "Trong tứ giác nội tiếp, tổng hai góc đối bằng $180^\circ \Rightarrow \widehat{C} = 180^\circ - 85^\circ = 95^\circ$."})
-    
     r_tron = random.randint(4, 9)
     opt, ans = make_opts(f"{2*r_tron}\pi", f"{r_tron}\pi", f"{r_tron**2}\pi", f"{(r_tron**2)/2}\pi")
     pool_6.append({"q": f"Chu vi của đường tròn có bán kính $R = {r_tron}cm$ là:", "options": opt, "ans": ans, "exp": f"Chu vi $C = 2\pi R = 2\pi({r_tron}) = {2*r_tron}\pi$."})
-    
     r33, d33 = random.choice([(5, 6), (5, 8), (10, 12), (10, 16), (13, 10), (13, 24)])
     h33 = int(math.sqrt(r33**2 - (d33/2)**2))
     opt, ans = make_opts(f"{h33}cm", f"{h33+1}cm", f"{h33-1}cm", f"{h33+2}cm")
     pool_6.append({"q": f"Cho đường tròn tâm $O$ bán kính ${r33}cm$ và dây cung $AB = {d33}cm$. Khoảng cách từ tâm $O$ đến dây $AB$ là:", "options": opt, "ans": ans, "exp": f"Gọi $H$ là trung điểm $AB \Rightarrow AH = {int(d33/2)}cm$. Áp dụng Pytago cho $\Delta OAH$: $OH = \sqrt{{{r33}^2 - {int(d33/2)}^2}} = {h33}cm$."})
-    
     pool_6.append({"q": "Cho hai tiếp tuyến $AB$ và $AC$ cắt nhau tại $A$ (với $B, C$ là tiếp điểm). Khẳng định nào sau đây là ĐÚNG?", "options": ["A. $AB = AC$", "B. $AB \perp AC$", "C. $AB > AC$", "D. $AO \perp BC$ tại trọng tâm"], "ans": "A", "exp": "Theo tính chất hai tiếp tuyến cắt nhau, khoảng cách từ giao điểm đến hai tiếp điểm là bằng nhau."})
-    
     pool_6.append({"q": "Cho đoạn thẳng $AB$ cố định. Quỹ tích các điểm $M$ nhìn đoạn $AB$ dưới một góc vuông là:", "options": ["A. Đường tròn đường kính AB", "B. Đường trung trực của AB", "C. Tia phân giác của góc vuông", "D. Đoạn thẳng AB"], "ans": "A", "exp": "Quỹ tích các điểm nhìn đoạn thẳng dưới 1 góc vuông là đường tròn đường kính đoạn thẳng đó."})
 
     # --- POOL 7: HÌNH KHỐI ---
     pool_7.append({"q": "Công thức tính diện tích toàn phần của hình trụ có bán kính đáy $r$ và chiều cao $h$ là:", "options": ["A. $S_{tp} = 2\pi r h + 2\pi r^2$", "B. $S_{tp} = \pi r^2 h$", "C. $S_{tp} = \pi r l + \pi r^2$", "D. $S_{tp} = 4\pi r^2$"], "ans": "A", "exp": "Diện tích toàn phần bằng tổng diện tích xung quanh và diện tích hai đáy."})
-    
     r36 = random.randint(2, 4); h36 = random.randint(5, 8)
     opt, ans = make_opts(f"{2*r36*h36}\pi", f"{r36*h36}\pi", f"{r36**2 * h36}\pi", f"{4*r36*h36}\pi")
-    pool_7.append({"q": f"Dựa vào kích thước trên hình vẽ, diện tích xung quanh của khối trụ (cylinder) này là:", "svg": svg_cylinder(str(r36), str(h36)), "options": opt, "ans": ans, "exp": f"$S_{{xq}} = 2\pi r h = 2\pi({r36})({h36}) = {2*r36*h36}\pi$."})
-    
+    pool_7.append({"q": f"Dựa vào kích thước trên hình vẽ, diện tích xung quanh của khối trụ này là:", "svg": svg_cylinder(str(r36), str(h36)), "options": opt, "ans": ans, "exp": f"$S_{{xq}} = 2\pi r h = 2\pi({r36})({h36}) = {2*r36*h36}\pi$."})
     r37 = random.randint(3, 5); l37 = random.randint(6, 10)
     opt, ans = make_opts(f"{r37*l37}\pi", f"{r37**2 * l37}\pi", f"{2*r37*l37}\pi", f"{(r37*l37)/3}\pi")
     pool_7.append({"q": f"Một hình nón có bán kính đáy $r = {r37}cm$, đường sinh $l = {l37}cm$. Diện tích xung quanh của hình nón là:", "svg": svg_cone(str(r37), str(l37)), "options": opt, "ans": ans, "exp": f"Công thức $S_{{xq}} = \pi r l = \pi \cdot {r37} \cdot {l37} = {r37*l37}\pi$."})
-    
     pool_7.append({"q": "Thể tích của một hình cầu có bán kính $R$ được tính bằng công thức nào?", "options": ["A. $V = \\frac{4}{3}\pi R^3$", "B. $V = 4\pi R^2$", "C. $V = \\frac{1}{3}\pi R^3$", "D. $V = \pi R^3$"], "ans": "A", "exp": "Thể tích hình cầu bằng $\\frac{4}{3}\pi R^3$."})
 
     # --- POOL 8: THỐNG KÊ XÁC SUẤT ---
@@ -645,22 +599,18 @@ def generate_algorithmic_practice():
     tot_bar = v1 + v2 + v3
     opt, ans = make_opts(str(tot_bar), str(v1+v2), str(tot_bar+10), str(tot_bar-5))
     pool_8.append({"q": "Dựa vào biểu đồ cột thể hiện số học sinh giỏi của 3 lớp, tổng số học sinh giỏi của cả 3 lớp khối 9 là bao nhiêu?", "svg": svg_bar_chart("9A", v1, "9B", v2, "9C", v3, "SỐ HỌC SINH GIỎI"), "options": opt, "ans": ans, "exp": f"Cộng 3 cột: ${v1} + {v2} + {v3} = {tot_bar}$ học sinh."})
-    
     p1, p2, p3 = 25, 25, 50
     opt, ans = make_opts("100", "50", "25", "150")
     pool_8.append({"q": f"Biểu đồ quạt tròn biểu diễn tỉ lệ % môn học yêu thích. Biết tổng học sinh là $200$ em. Số học sinh yêu thích phần màu xanh lá ({p3}%) là bao nhiêu em?", "svg": svg_pie_chart(p1, p2, p3), "options": opt, "ans": ans, "exp": f"Số học sinh = $200 \\times 50\% = 100$ em."})
-    
     c_list = [("xanh", "đỏ"), ("vàng", "trắng"), ("đỏ", "trắng")]
     for _ in range(3):
         color1, color2 = random.choice(c_list)
         w39 = random.randint(3, 7); l39 = random.randint(4, 8); tot39 = w39 + l39
         opt, ans = make_opts(f"\\frac{{{w39}}}{{{tot39}}}", f"\\frac{{{w39}}}{{{l39}}}", f"\\frac{{{l39}}}{{{tot39}}}", f"\\frac{{1}}{{{tot39}}}")
         pool_8.append({"q": f"Trong hộp có ${w39}$ quả bóng {color1} và ${l39}$ quả bóng {color2}. Xác suất lấy ngẫu nhiên 1 quả bóng được bóng {color1} là:", "svg": svg_box_of_balls(color1, w39, color2, l39), "options": opt, "ans": ans, "exp": f"Xác suất = $\\frac{{{w39}}}{{{tot39}}}$."})
-    
     opt, ans = make_opts("\\frac{1}{2}", "\\frac{1}{3}", "\\frac{1}{6}", "\\frac{2}{3}")
     pool_8.append({"q": "Gieo một con xúc xắc cân đối. Xác suất để mặt xuất hiện là số nguyên tố bằng:", "options": opt, "ans": ans, "exp": "Số nguyên tố thuộc tập $\{2; 3; 5\}$. Xác suất $P = \\frac{3}{6} = \\frac{1}{2}$."})
 
-    # --- Lấy ngẫu nhiên theo ma trận ---
     selected = random.sample(pool_1, 5) + random.sample(pool_2, 5) + random.sample(pool_3, 7) + random.sample(pool_4, 3) + random.sample(pool_5, 5) + random.sample(pool_6, 6) + random.sample(pool_7, 4) + random.sample(pool_8, 5)
     random.shuffle(selected)
     return selected
@@ -853,13 +803,12 @@ def main():
                     conn.commit(); conn.close(); st.success("✅ Đã lưu!")
             st.markdown("---")
             
-            # ĐÃ XÓA MENU THỪA THEO YÊU CẦU
             if role in ["core_admin", "sub_admin"]:
                 menu = ["📤 Giao đề", "📊 Thống kê"]
                 if role == "core_admin": menu = ["🛡️ Quản trị"] + menu
                 elif role == "sub_admin": menu = ["👥 Quản lý lớp"] + menu
             elif role == "student":
-                menu = ["✍️ Kiểm tra bắt buộc", "🚀 Luyện đề tự do"]
+                menu = ["✍️ Bài tập", "🚀 Luyện đề"]
                 
             choice = st.radio("Menu", menu, label_visibility="collapsed")
             if st.button("🚪 Thoát", use_container_width=True): st.session_state.clear(); st.rerun()
@@ -994,8 +943,8 @@ def main():
                             st.bar_chart(stat_df.set_index('Câu'))
             conn.close()
 
-        elif choice == "✍️ Kiểm tra bắt buộc":
-            st.header("Kiểm tra bắt buộc")
+        elif choice == "✍️ Bài tập":
+            st.header("Bài tập")
             conn = get_conn()
             student_class = st.session_state.class_name.strip() if st.session_state.class_name else ""
             exams = conn.execute("SELECT id, title, questions_json, time_limit FROM mandatory_exams WHERE trim(target_class)=? OR target_class='Tất cả'", (student_class,)).fetchall()
@@ -1022,8 +971,8 @@ def main():
                     take_exam_ui(st.session_state.taking_exam, st.session_state.taking_exam['id'], True, st.session_state.get('review_mode', False), st.session_state.get('review_data'))
             conn.close()
 
-        elif choice == "🚀 Luyện đề tự do":
-            st.header("Luyện đề tự do") 
+        elif choice == "🚀 Luyện đề":
+            st.header("Luyện đề") 
             if st.session_state.get('taking_free_exam') is None:
                 if st.button("TẠO ĐỀ", type="primary"): 
                     with st.spinner("Đang xử lý..."):
