@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import google.generativeai as genai
 
-# --- CẤU HÌNH HỆ THỐNG V44 (A1 SUPREME - BẢN KIM CƯƠNG HOÀN THIỆN LÕI) ---
+# --- CẤU HÌNH HỆ THỐNG V45 (A1 SUPREME - BẢN KIM CƯƠNG BẤT BẠI) ---
 ADMIN_CORE_EMAIL = "maducnghi6789@gmail.com"
 ADMIN_CORE_PW = "admin123"
 VN_TZ = timezone(timedelta(hours=7))
@@ -50,6 +50,8 @@ def clean_ai_json(json_str):
         res = res[start_idx:end_idx+1]
     res = re.sub(r',\s*]', ']', res)
     res = re.sub(r',\s*}', '}', res)
+    # FIX LỖI ẢO GIÁC NGOẶC KÉP CỦA AI TRONG CHUỖI JSON
+    res = res.replace('{{', '{').replace('}}', '}')
     return res
 
 def format_math(text):
@@ -58,7 +60,6 @@ def format_math(text):
     text = re.sub(bt + r'(.*?)' + bt, r'$\1$', text)
     text = text.replace('TEX_', '\\')
     text = text.replace('\\\\', '\\')
-    # Chống ảo giác nhân đôi ngoặc nhọn của AI
     text = text.replace('{{', '{').replace('}}', '}')
     return text
 
@@ -69,7 +70,7 @@ def get_api_key():
     return res[0] if res else ""
 
 # ==========================================
-# 2. HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU (FIX LỖI CÚ PHÁP TRIPLE QUOTES)
+# 2. HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU (FIX LỖI CÚ PHÁP ĐỨT DÒNG)
 # ==========================================
 def init_db():
     conn = get_conn()
@@ -115,7 +116,7 @@ def log_deletion(deleted_by, entity_type, entity_name, reason):
     except: pass
 
 # ==========================================
-# 3. QUẢN LÝ TÀI KHOẢN
+# 3. QUẢN LÝ TÀI KHOẢN VÀ LỚP HỌC
 # ==========================================
 def account_manager_ui(target_role, specific_class=None):
     st.markdown(f"#### 🛠️ Quản lý {target_role}")
@@ -227,7 +228,7 @@ def delete_class_module(all_classes):
             conn.commit(); conn.close(); st.rerun()
 
 # ==========================================
-# 4. MODULE AI ĐỌC & BIÊN SOẠN ĐỀ (ADMIN AI ENGINE)
+# 4. MODULE AI ĐỌC & BIÊN SOẠN ĐỀ (FIX LỖI 404 & FORMAT JSON)
 # ==========================================
 def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -237,43 +238,65 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def safe_ai_generate(prompt, api_key_string):
+    """Băng đạn 6 viên: Tự động trượt model lỗi 404, trượt key lỗi 429"""
     if not api_key_string or not api_key_string.strip(): return "LỖI: Chưa nhập API Key."
     keys = [k.strip() for k in api_key_string.split(',') if k.strip()]
     random.shuffle(keys)
+    
+    # Danh sách Model Fallback xuyên 404
+    models_to_try = [
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-flash',
+        'gemini-1.0-pro'
+    ]
+    
     last_err = ""
     for attempt in range(2):
         for current_key in keys:
             genai.configure(api_key=current_key)
-            try:
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                response = model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=0.4))
-                raw_response = response.text.replace('TEX_', '\\')
-                cleaned_text = clean_ai_json(raw_response)
-                parsed_json = json.loads(cleaned_text)
-                if isinstance(parsed_json, list) and len(parsed_json) > 0: return parsed_json
-            except Exception as e:
-                err_msg = str(e).lower()
-                last_err = err_msg
-                if "429" in err_msg or "quota" in err_msg: continue 
-                elif "403" in err_msg or "api key" in err_msg: break
-                else: continue
+            for model_name in models_to_try:
+                try:
+                    model = genai.GenerativeModel(model_name)
+                    response = model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=0.85))
+                    
+                    raw_response = response.text.replace('TEX_', '\\')
+                    cleaned_text = clean_ai_json(raw_response)
+                    
+                    try:
+                        parsed_json = json.loads(cleaned_text)
+                        if isinstance(parsed_json, list) and len(parsed_json) > 0: return parsed_json
+                    except json.JSONDecodeError:
+                        continue # Hỏng format thì bỏ qua, thử model khác
+                        
+                except Exception as e:
+                    err_msg = str(e).lower()
+                    last_err = err_msg
+                    if "404" in err_msg or "not found" in err_msg: continue # Lỗi tên Model, qua model tiếp
+                    elif "429" in err_msg or "quota" in err_msg: break # Lỗi API Key quá tải, qua Key tiếp
+                    elif "403" in err_msg or "api key" in err_msg: break # Lỗi API Key hỏng, qua Key tiếp
+                    else: continue
         if "429" in last_err or "quota" in last_err: time.sleep(5)
         else: break
-    return f"LỖI TẠO ĐỀ: {last_err}. AI bị nghẽn hoặc sai định dạng."
+    return f"LỖI TẠO ĐỀ: {last_err}. Vui lòng thử lại sau 1 phút."
 
 def generate_ai_exam_for_admin(api_key):
     prompt = """Hãy đóng vai là một chuyên gia ra đề thi Toán.
-    YÊU CẦU: TẠO MỘT ĐỀ THI GỒM ĐÚNG 40 CÂU KHÁC NHAU. KHÔNG ĐƯỢC LẶP LẠI DẠNG BÀI.
+    YÊU CẦU TỐI THƯỢNG: TẠO MỘT ĐỀ THI GỒM ĐÚNG 40 CÂU KHÁC NHAU HOÀN TOÀN VỀ DẠNG BÀI. TUYỆT ĐỐI KHÔNG ĐƯỢC LẶP LẠI (Ví dụ: Đã hỏi khoảng cách dây cung thì không hỏi lại nữa). Phải phủ sóng đầy đủ 40 kiến thức.
     MA TRẬN: Căn thức, Hàm số y=ax^2, PT & Hệ PT, Bất PT, Hệ thức lượng, Đường tròn, Hình khối, Thống kê & Xác suất.
     ĐỊNH DẠNG JSON BẮT BUỘC: [{"q": "...", "options": ["A. $...$", "B. $...$", "C. $...$", "D. $...$"], "ans": "A", "exp": "Giải nhanh..."}]
-    LƯU Ý: Bọc công thức Toán trong dấu $. KHÔNG dùng ngoặc nhọn kép {{ }}. Chỉ xuất JSON sạch, không kèm markdown.
+    LƯU Ý CỰC KỲ QUAN TRỌNG: 
+    1. Bắt buộc bọc MỌI biểu thức Toán và phân số trong dấu $. 
+    2. KHÔNG dùng ngoặc nhọn kép {{ }}. Chỉ dùng { } cho phân số.
+    3. Trả về đúng định dạng JSON Array, KHÔNG kèm Markdown (không có ```json).
     """
     return safe_ai_generate(prompt, api_key)
 
 def parse_admin_exam_with_ai(raw_text, api_key):
-    prompt = f"""Đọc đề thi Toán dưới đây. CHUẨN HÓA TOÁN HỌC, TÌM ĐÁP ÁN ĐÚNG và VIẾT HƯỚNG DẪN GIẢI ngắn gọn.
+    prompt = f"""Đọc đề thi Toán dưới đây. CHUẨN HÓA TOÁN HỌC, TÌM ĐÁP ÁN ĐÚNG và VIẾT HƯỚNG DẪN GIẢI.
     YÊU CẦU ĐỊNH DẠNG JSON BẮT BUỘC: [{{"q": "...", "options": ["A. $...$", "B. $...$", "C. $...$", "D. $...$"], "ans": "A", "exp": "Giải nhanh..."}}]
-    LƯU Ý: Bọc các công thức trong dấu $. KHÔNG dùng ngoặc nhọn kép {{ }}. Chỉ xuất JSON sạch, không kèm markdown.
+    LƯU Ý: Bọc các công thức trong dấu $. Dùng nháy đơn (') bên trong chuỗi. KHÔNG dùng ngoặc nhọn kép {{ }}. CHỈ XUẤT JSON.
     VĂN BẢN ĐỀ THI: {raw_text}
     """
     return safe_ai_generate(prompt, api_key)
@@ -286,7 +309,7 @@ def svg_bar_chart(cat1, val1, cat2, val2, cat3, val3, title="Biểu đồ Tần 
     scale = 100 / max_v
     return f"""
     <div style="display: flex; justify-content: center; margin: 15px 0;">
-    <svg width="240" height="180" viewBox="0 0 240 180" xmlns="http://www.w3.org/2000/svg">
+    <svg width="240" height="180" viewBox="0 0 240 180" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)">
         <text x="120" y="20" font-family="Arial" font-size="13" font-weight="bold" fill="#1e293b" text-anchor="middle">{title}</text>
         <line x1="40" y1="30" x2="40" y2="140" stroke="#334155" stroke-width="2"/>
         <line x1="40" y1="140" x2="220" y2="140" stroke="#334155" stroke-width="2"/>
@@ -305,7 +328,7 @@ def svg_bar_chart(cat1, val1, cat2, val2, cat3, val3, title="Biểu đồ Tần 
 def svg_pie_chart(p1, p2, p3):
     return f"""
     <div style="display: flex; justify-content: center; margin: 15px 0;">
-    <svg width="220" height="200" viewBox="0 0 220 200" xmlns="http://www.w3.org/2000/svg">
+    <svg width="220" height="200" viewBox="0 0 220 200" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)">
         <path d="M 110 100 L 110 20 A 80 80 0 0 1 190 100 Z" fill="#3b82f6" stroke="#fff" stroke-width="2"/>
         <path d="M 110 100 L 190 100 A 80 80 0 0 1 110 180 Z" fill="#ef4444" stroke="#fff" stroke-width="2"/>
         <path d="M 110 100 L 110 180 A 80 80 0 0 1 110 20 Z" fill="#10b981" stroke="#fff" stroke-width="2"/>
@@ -318,7 +341,7 @@ def svg_pie_chart(p1, p2, p3):
 def svg_parabola_intersection(a_val, b_val):
     return f"""
     <div style="display: flex; justify-content: center; margin: 15px 0;">
-    <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <svg width="200" height="200" viewBox="0 0 200 200" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)">
         <defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e2e8f0" stroke-width="1"/></pattern></defs>
         <rect width="200" height="200" fill="url(#grid)" />
         <line x1="100" y1="0" x2="100" y2="200" stroke="#333" stroke-width="2"/>
@@ -337,7 +360,7 @@ def svg_parabola_intersection(a_val, b_val):
 def svg_circle_inscribed_angle(angle):
     return f"""
     <div style="display: flex; justify-content: center; margin: 15px 0;">
-    <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <svg width="200" height="200" viewBox="0 0 200 200" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)">
         <circle cx="100" cy="100" r="80" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
         <circle cx="100" cy="100" r="3" fill="#0f172a"/>
         <text x="95" y="115" font-family="Arial" font-size="13" font-weight="bold">O</text>
@@ -353,7 +376,7 @@ def svg_circle_inscribed_angle(angle):
 def svg_building(h_val, shadow_val, angle_val):
     return f"""
     <div style="display: flex; justify-content: center; margin: 15px 0;">
-    <svg width="250" height="180" viewBox="0 0 250 180" xmlns="http://www.w3.org/2000/svg">
+    <svg width="250" height="180" viewBox="0 0 250 180" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)">
         <rect x="40" y="30" width="50" height="120" fill="#94a3b8" stroke="#334155" stroke-width="2"/>
         <rect x="50" y="40" width="10" height="15" fill="#e2e8f0"/>
         <rect x="70" y="40" width="10" height="15" fill="#e2e8f0"/>
@@ -371,7 +394,7 @@ def svg_building(h_val, shadow_val, angle_val):
 def svg_ladder(ladder_val, dist_val, angle_val):
     return f"""
     <div style="display: flex; justify-content: center; margin: 15px 0;">
-    <svg width="220" height="180" viewBox="0 0 220 180" xmlns="http://www.w3.org/2000/svg">
+    <svg width="220" height="180" viewBox="0 0 220 180" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)">
         <line x1="40" y1="20" x2="40" y2="160" stroke="#475569" stroke-width="4"/>
         <line x1="40" y1="160" x2="200" y2="160" stroke="#475569" stroke-width="4"/>
         <line x1="40" y1="40" x2="160" y2="160" stroke="#b45309" stroke-width="6" stroke-linecap="round"/>
@@ -385,7 +408,7 @@ def svg_ladder(ladder_val, dist_val, angle_val):
 def svg_cylinder(r_val, h_val):
     return f"""
     <div style="display: flex; justify-content: center; margin: 15px 0;">
-    <svg width="160" height="200" viewBox="0 0 160 200" xmlns="http://www.w3.org/2000/svg">
+    <svg width="160" height="200" viewBox="0 0 160 200" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)">
         <ellipse cx="80" cy="40" rx="60" ry="20" fill="#e2e8f0" stroke="#334155" stroke-width="2"/>
         <path d="M 20 40 L 20 160 A 60 20 0 0 0 140 160 L 140 40" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
         <path d="M 20 160 A 60 20 0 0 1 140 160" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5,5"/>
@@ -399,7 +422,7 @@ def svg_cylinder(r_val, h_val):
 def svg_cone(r_val, l_val):
     return f"""
     <div style="display: flex; justify-content: center; margin: 15px 0;">
-    <svg width="180" height="200" viewBox="0 0 180 200" xmlns="http://www.w3.org/2000/svg">
+    <svg width="180" height="200" viewBox="0 0 180 200" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)">
         <path d="M 90 20 L 20 160 A 70 25 0 0 0 160 160 Z" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
         <path d="M 20 160 A 70 25 0 0 1 160 160" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5,5"/>
         <line x1="90" y1="160" x2="160" y2="160" stroke="#dc2626" stroke-width="2"/>
@@ -411,7 +434,7 @@ def svg_cone(r_val, l_val):
 def svg_right_triangle(base_label, height_label, hyp_label, angle_label, obj_name="Máy bay"):
     return f"""
     <div style="display: flex; justify-content: center; margin: 15px 0;">
-    <svg width="220" height="160" viewBox="0 0 220 160" xmlns="http://www.w3.org/2000/svg">
+    <svg width="220" height="160" viewBox="0 0 220 160" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)">
         <polygon points="30,130 180,130 180,30" style="fill:#f8fafc;stroke:#334155;stroke-width:2" />
         <polyline points="170,130 170,120 180,120" style="fill:none;stroke:#334155;stroke-width:1.5" />
         <text x="90" y="148" font-family="Arial" font-size="14" font-weight="bold" fill="#0f172a">{base_label}</text>
@@ -440,14 +463,14 @@ def svg_box_of_balls(color1_name, color1_count, color2_name, color2_count):
     box_h = 50 + row * 25
     return f"""
     <div style="display: flex; justify-content: center; margin: 15px 0;">
-    <svg width="240" height="{box_h}" viewBox="0 0 240 {box_h}" xmlns="http://www.w3.org/2000/svg">
+    <svg width="240" height="{box_h}" viewBox="0 0 240 {box_h}" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)">
         <rect x="10" y="10" width="220" height="{box_h-20}" rx="8" style="fill:#f1f5f9;stroke:#64748b;stroke-width:2" stroke-dasharray="5,5" />
         {balls}
     </svg></div>
     """
 
 # ==========================================
-# 6. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE)
+# 6. ĐỘNG CƠ THUẬT TOÁN ĐẢO SỐ (100% OFFLINE CHO LUYỆN TỰ DO)
 # ==========================================
 def generate_algorithmic_practice():
     questions = []
@@ -468,8 +491,8 @@ def generate_algorithmic_practice():
     pool_1.append({"q": f"Tính giá trị của biểu thức $P = \sqrt{{{a1**2}}} - \sqrt{{{(-b1)**2}}}$", "options": opt, "ans": ans, "exp": f"$P = {a1} - |- {b1}| = {a1} - {b1} = {a1-b1}$."})
     
     m2 = random.randint(2, 5); n2 = random.randint(1, 9)
-    opt, ans = make_opts(f"x \le \\frac{{{n2}}}{{{m2}}}", f"x \ge \\frac{{{n2}}}{{{m2}}}", f"x < \\frac{{{n2}}}{{{m2}}}", f"x > \\frac{{{n2}}}{{{m2}}}")
-    pool_1.append({"q": f"Biểu thức $\sqrt{{{n2} - {m2}x}}$ xác định khi và chỉ khi:", "options": opt, "ans": ans, "exp": f"${n2} - {m2}x \ge 0 \Leftrightarrow {m2}x \le {n2} \Leftrightarrow x \le \\frac{{{n2}}}{{{m2}}}$."})
+    opt, ans = make_opts(f"x \\le \\frac{{{n2}}}{{{m2}}}", f"x \\ge \\frac{{{n2}}}{{{m2}}}", f"x < \\frac{{{n2}}}{{{m2}}}", f"x > \\frac{{{n2}}}{{{m2}}}")
+    pool_1.append({"q": f"Biểu thức $\sqrt{{{n2} - {m2}x}}$ xác định khi và chỉ khi:", "options": opt, "ans": ans, "exp": f"${n2} - {m2}x \\ge 0 \Leftrightarrow {m2}x \\le {n2} \Leftrightarrow x \\le \\frac{{{n2}}}{{{m2}}}$."})
 
     k3 = random.choice([2, 3, 5, 7])
     opt, ans = make_opts(f"2\sqrt{{{k3}}}", f"\sqrt{{{k3}}}", f"\\frac{{2}}{{\sqrt{{{k3}}}}}", f"{k3}\sqrt{{{k3}}}")
@@ -507,8 +530,8 @@ def generate_algorithmic_practice():
     opt, ans = make_opts("-3", "3", "4", "-4")
     pool_2.append({"q": "Hệ số góc của đường thẳng $y = -3x + 4$ là:", "options": opt, "ans": ans, "exp": "Đường thẳng $y = ax + b$ có hệ số góc là $a$. Vậy hệ số góc là $-3$."})
 
-    opt, ans = make_opts("m = \pm 1", "m = 1", "m = -1", "m = 2")
-    pool_2.append({"q": "Hai đường thẳng $y = 2x + 1$ và $y = (m^2+1)x + 3$ song song với nhau khi:", "options": opt, "ans": ans, "exp": "Điều kiện song song: Hệ số góc bằng nhau $\Rightarrow m^2 + 1 = 2 \Leftrightarrow m^2 = 1 \Leftrightarrow m = \pm 1$."})
+    opt, ans = make_opts("m = \\pm 1", "m = 1", "m = -1", "m = 2")
+    pool_2.append({"q": "Hai đường thẳng $y = 2x + 1$ và $y = (m^2+1)x + 3$ song song với nhau khi:", "options": opt, "ans": ans, "exp": "Điều kiện song song: Hệ số góc bằng nhau $\Rightarrow m^2 + 1 = 2 \Leftrightarrow m^2 = 1 \Leftrightarrow m = \\pm 1$."})
 
     a_h7 = random.choice([2, 4])
     opt, ans = make_opts(a_h7*4, -a_h7*4, a_h7*2, -a_h7*2)
@@ -532,7 +555,7 @@ def generate_algorithmic_practice():
     pool_3.append({"q": f"Gọi $x_1, x_2$ là nghiệm của phương trình $x^2 {s_str} {p_str} = 0$. Giá trị của $x_1 \cdot x_2$ là:", "options": opt, "ans": ans, "exp": f"Theo hệ thức Vi-ét: $x_1 \cdot x_2 = \\frac{{c}}{{a}} = {P}$."})
 
     opt, ans = make_opts("4", "2", "0", "1")
-    pool_3.append({"q": "Số nghiệm của phương trình $x^4 - 5x^2 + 4 = 0$ là:", "options": opt, "ans": ans, "exp": "Đặt $t = x^2 \ge 0$, pt trở thành $t^2 - 5t + 4 = 0$. Có nghiệm $t=1$ và $t=4$. Từ đó suy ra $x = \pm 1$ và $x = \pm 2$. Vậy có 4 nghiệm."})
+    pool_3.append({"q": "Số nghiệm của phương trình $x^4 - 5x^2 + 4 = 0$ là:", "options": opt, "ans": ans, "exp": "Đặt $t = x^2 \\ge 0$, pt trở thành $t^2 - 5t + 4 = 0$. Có nghiệm $t=1$ và $t=4$. Từ đó suy ra $x = \\pm 1$ và $x = \\pm 2$. Vậy có 4 nghiệm."})
 
     opt, ans = make_opts("m = 4", "m = -4", "m = 2", "m = -2")
     pool_3.append({"q": "Điều kiện của tham số $m$ để phương trình $x^2 - 2x + m - 3 = 0$ có nghiệm kép là:", "options": opt, "ans": ans, "exp": "$\Delta' = (-1)^2 - 1(m-3) = 4 - m$. Để phương trình có nghiệm kép thì $\Delta' = 0 \Leftrightarrow m = 4$."})
@@ -545,17 +568,17 @@ def generate_algorithmic_practice():
     pool_3.append({"q": f"Số cặp số nguyên $(x; y)$ thỏa mãn phương trình $x y - 2x - y = {c_ng}$ là:", "options": opt, "ans": ans, "exp": f"Biến đổi pt thành $x(y-2) - (y-2) = {c_ng+2} \Leftrightarrow (x-1)(y-2) = {c_ng+2}$. Dựa vào số ước nguyên của ${c_ng+2}$ để tìm số cặp."})
 
     # --- POOL 4: BẤT PHƯƠNG TRÌNH ---
-    opt, ans = make_opts("x < 4", "x > 4", "x \ge 4", "x \le 4")
+    opt, ans = make_opts("x < 4", "x > 4", "x \\ge 4", "x \\le 4")
     pool_4.append({"q": "Tập nghiệm của bất phương trình $-3x + 12 > 0$ là:", "options": opt, "ans": ans, "exp": "$-3x > -12$. Chia hai vế cho số âm phải đổi chiều $\Rightarrow x < 4$."})
     
     opt, ans = make_opts("-2", "-1", "-3", "-4")
     pool_4.append({"q": "Nghiệm nguyên âm lớn nhất thỏa mãn bất phương trình $2x + 5 > 0$ là:", "options": opt, "ans": ans, "exp": "$2x > -5 \Leftrightarrow x > -2.5$. Số nguyên âm lớn nhất thỏa mãn là $-2$."})
     
-    opt, ans = make_opts("m > \\frac{5}{2}", "m < \\frac{5}{2}", "m \ge \\frac{5}{2}", "m \neq \\frac{5}{2}")
+    opt, ans = make_opts("m > \\frac{5}{2}", "m < \\frac{5}{2}", "m \\ge \\frac{5}{2}", "m \\neq \\frac{5}{2}")
     pool_4.append({"q": "Tìm tất cả các giá trị của tham số $m$ để hàm số $y = (5 - 2m)x + 1$ nghịch biến trên $\mathbb{R}$.", "options": opt, "ans": ans, "exp": "Hàm số nghịch biến khi hệ số góc $a < 0 \Leftrightarrow 5 - 2m < 0 \Leftrightarrow 2m > 5 \Leftrightarrow m > \\frac{5}{2}$."})
     
     opt, ans = make_opts("2", "1", "4", "0.5")
-    pool_4.append({"q": "Cho $x, y > 0$ thỏa mãn $x+y=2$. Giá trị nhỏ nhất của biểu thức $P = \\frac{1}{x} + \\frac{1}{y}$ là:", "options": opt, "ans": ans, "exp": "Áp dụng BĐT $\\frac{1}{x} + \\frac{1}{y} \ge \\frac{4}{x+y} = \\frac{4}{2} = 2$. Dấu = xảy ra khi $x=y=1$."})
+    pool_4.append({"q": "Cho $x, y > 0$ thỏa mãn $x+y=2$. Giá trị nhỏ nhất của biểu thức $P = \\frac{1}{x} + \\frac{1}{y}$ là:", "options": opt, "ans": ans, "exp": "Áp dụng BĐT $\\frac{1}{x} + \\frac{1}{y} \\ge \\frac{4}{x+y} = \\frac{4}{2} = 2$. Dấu = xảy ra khi $x=y=1$."})
 
     # --- POOL 5: HỆ THỨC LƯỢNG ---
     pool_5.append({"q": "Trong tam giác vuông, bình phương đường cao ứng với cạnh huyền bằng:", "options": ["A. Tích hai hình chiếu của hai cạnh góc vuông trên cạnh huyền", "B. Tích hai cạnh góc vuông", "C. Tích cạnh huyền và đường cao", "D. Tổng bình phương hai cạnh góc vuông"], "ans": "A", "exp": "Lý thuyết cơ bản: $h^2 = b' \cdot c'$."})
@@ -566,7 +589,7 @@ def generate_algorithmic_practice():
     b27 = random.randint(4, 15); g27 = random.choice([30, 45, 60]); h27 = round(b27 * math.tan(math.radians(g27)), 1)
     obj = random.choice(["tòa nhà", "cột cờ", "tháp hải đăng", "cái cây"])
     opt, ans = make_opts(f"{h27}m", f"{round(b27/math.tan(math.radians(g27)),1)}m", f"{round(b27*math.sin(math.radians(g27)),1)}m", f"{round(b27*math.cos(math.radians(g27)),1)}m")
-    pool_5.append({"q": f"Bóng của một {obj} trên mặt đất dài ${b27}m$. Tia sáng mặt trời tạo với mặt đất một góc ${g27}^\circ$. Chiều cao của {obj} xấp xỉ bằng:", "svg": svg_building("? m", f"{b27}m", f"{g27}°"), "options": opt, "ans": ans, "exp": f"Chiều cao = Bóng $\\times \\tan({g27}^\circ) = {b27} \\times \\tan({g27}^\circ) \approx {h27}m$."})
+    pool_5.append({"q": f"Bóng của một {obj} trên mặt đất dài ${b27}m$. Tia sáng mặt trời tạo với mặt đất một góc ${g27}^\circ$. Chiều cao của {obj} xấp xỉ bằng:", "svg": svg_building("? m", f"{b27}m", f"{g27}°"), "options": opt, "ans": ans, "exp": f"Chiều cao = Bóng $\\times \\tan({g27}^\circ) = {b27} \\times \\tan({g27}^\circ) \\approx {h27}m$."})
     
     l_bay = random.randint(4, 15); g_bay = random.choice([20, 25, 30]); h_bay = round(l_bay * math.sin(math.radians(g_bay)), 1)
     opt, ans = make_opts(f"{h_bay}km", f"{round(l_bay * math.cos(math.radians(g_bay)), 1)}km", f"{round(l_bay / math.sin(math.radians(g_bay)), 1)}km", f"{round(l_bay * math.tan(math.radians(g_bay)), 1)}km")
@@ -609,7 +632,7 @@ def generate_algorithmic_practice():
     
     r36 = random.randint(2, 4); h36 = random.randint(5, 8)
     opt, ans = make_opts(f"{2*r36*h36}\pi", f"{r36*h36}\pi", f"{r36**2 * h36}\pi", f"{4*r36*h36}\pi")
-    pool_7.append({"q": f"Dựa vào kích thước trên hình vẽ, diện tích xung quanh của khối trụ này là:", "svg": svg_cylinder(str(r36), str(h36)), "options": opt, "ans": ans, "exp": f"$S_{{xq}} = 2\pi r h = 2\pi({r36})({h36}) = {2*r36*h36}\pi$."})
+    pool_7.append({"q": f"Dựa vào kích thước trên hình vẽ, diện tích xung quanh của khối trụ (cylinder) này là:", "svg": svg_cylinder(str(r36), str(h36)), "options": opt, "ans": ans, "exp": f"$S_{{xq}} = 2\pi r h = 2\pi({r36})({h36}) = {2*r36*h36}\pi$."})
     
     r37 = random.randint(3, 5); l37 = random.randint(6, 10)
     opt, ans = make_opts(f"{r37*l37}\pi", f"{r37**2 * l37}\pi", f"{2*r37*l37}\pi", f"{(r37*l37)/3}\pi")
@@ -830,12 +853,13 @@ def main():
                     conn.commit(); conn.close(); st.success("✅ Đã lưu!")
             st.markdown("---")
             
+            # ĐÃ XÓA MENU THỪA THEO YÊU CẦU
             if role in ["core_admin", "sub_admin"]:
                 menu = ["📤 Giao đề", "📊 Thống kê"]
                 if role == "core_admin": menu = ["🛡️ Quản trị"] + menu
                 elif role == "sub_admin": menu = ["👥 Quản lý lớp"] + menu
             elif role == "student":
-                menu = ["✍️ Bài tập", "🚀 Luyện đề"]
+                menu = ["✍️ Kiểm tra bắt buộc", "🚀 Luyện đề tự do"]
                 
             choice = st.radio("Menu", menu, label_visibility="collapsed")
             if st.button("🚪 Thoát", use_container_width=True): st.session_state.clear(); st.rerun()
@@ -970,8 +994,8 @@ def main():
                             st.bar_chart(stat_df.set_index('Câu'))
             conn.close()
 
-        elif choice == "✍️ Bài tập":
-            st.header("Bài tập")
+        elif choice == "✍️ Kiểm tra bắt buộc":
+            st.header("Kiểm tra bắt buộc")
             conn = get_conn()
             student_class = st.session_state.class_name.strip() if st.session_state.class_name else ""
             exams = conn.execute("SELECT id, title, questions_json, time_limit FROM mandatory_exams WHERE trim(target_class)=? OR target_class='Tất cả'", (student_class,)).fetchall()
@@ -998,8 +1022,8 @@ def main():
                     take_exam_ui(st.session_state.taking_exam, st.session_state.taking_exam['id'], True, st.session_state.get('review_mode', False), st.session_state.get('review_data'))
             conn.close()
 
-        elif choice == "🚀 Luyện đề":
-            st.header("Luyện đề") 
+        elif choice == "🚀 Luyện đề tự do":
+            st.header("Luyện đề tự do") 
             if st.session_state.get('taking_free_exam') is None:
                 if st.button("TẠO ĐỀ", type="primary"): 
                     with st.spinner("Đang xử lý..."):
